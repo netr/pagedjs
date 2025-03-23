@@ -1,4 +1,4 @@
-import Chunker from "./chunker/chunker.js";
+import Chunker from "./chunker/chunker";
 import Polisher from "./polisher/polisher.js";
 import Previewer from "./polyfill/previewer.js";
 import Handler from "./modules/handler.js";

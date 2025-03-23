@@ -23,7 +23,7 @@ import {
 	walk,
 	words
 } from "../utils/dom.js";
-import BreakToken from "./breaktoken.js";
+import BreakToken from "./breaktoken";
 import RenderResult from "./renderresult.js";
 import EventEmitter from "event-emitter";
 import Hook from "../utils/hook.js";

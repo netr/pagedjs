@@ -3,15 +3,12 @@
  * @class
  */
 class BreakToken {
+	private finished = false;
+	private breakNeededAt: HTMLElement[] = [];
 
-	constructor(node, overflowArray) {
-		this.node = node;
-		this.overflow = overflowArray || [];
-		this.finished = false;
-		this.breakNeededAt = [];
-	}
+	public constructor(public readonly node: Text | HTMLElement, public readonly overflow: Overflow[] = []) {}
 
-	equals(otherBreakToken) {
+	equals(otherBreakToken: BreakToken) {
 		if (this.node !== otherBreakToken.node) {
 			return false;
 		}
@@ -26,7 +23,7 @@ class BreakToken {
 			}
 		}
 
-		let otherQueue = otherBreakToken.getForcedBreakQueue();
+		const otherQueue = otherBreakToken.getForcedBreakQueue();
 		for (const index in this.breakNeededAt) {
 			if (!this.breakNeededAt[index].isEqualNode(otherQueue[index])) {
 				return false;
@@ -36,27 +33,27 @@ class BreakToken {
 		return true;
 	}
 
-	setFinished() {
+	public setFinished() {
 		this.finished = true;
 	}
 
-	isFinished() {
+	public isFinished() {
 		return this.finished;
 	}
 
-	addNeedsBreak(needsBreak) {
+	public addNeedsBreak(needsBreak: HTMLElement) {
 		this.breakNeededAt.push(needsBreak);
 	}
 
-	getNextNeedsBreak() {
+	public getNextNeedsBreak() {
 		return this.breakNeededAt.shift();
 	}
 
-	getForcedBreakQueue() {
+	public getForcedBreakQueue() {
 		return this.breakNeededAt;
 	}
 
-	setForcedBreakQueue(queue) {
+	public setForcedBreakQueue(queue: HTMLElement[]) {
 		return this.breakNeededAt = queue;
 	}
 }

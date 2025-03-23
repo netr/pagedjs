@@ -1,11 +1,10 @@
+import type BreakToken from "./breaktoken";
 import Page from "./page.js";
 import ContentParser from "./parser.js";
 import EventEmitter from "event-emitter";
+import type { Emitter } from "event-emitter";
 import Hook from "../utils/hook.js";
 import Queue from "../utils/queue.js";
-import {
-	requestIdleCallback
-} from "../utils/utils.js";
 
 const MAX_PAGES = null;
 const MAX_LAYOUTS = false;
@@ -84,54 +83,75 @@ const TEMPLATE = `
 	</div>
 </div>`;
 
+export type ChunkerHooks = Record<
+	"beforeParsed" |
+	"filter" |
+	"afterParsed" |
+	"beforePageLayout" |
+
+	"onPageLayout" |
+	"layout" |
+	"renderNode" |
+	"layoutNode" |
+	"onOverflow" |
+	"afterOverflowRemoved" |
+	"afterOverflowAdded" |
+	"onBreakToken" |
+	"beforeRenderResult" |
+
+	"afterPageLayout" |
+	"finalizePage" |
+	"afterRendered", Hook>;
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface ChunkerOptions {
+}
+
 /**
  * Chop up text into flows
  * @class
  */
+// Due to EventEmitter:
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 class Chunker {
-	constructor(content, renderTo, options) {
-		// this.preview = preview;
+	public readonly hooks: ChunkerHooks = {
+		beforeParsed: new Hook(this),
+		filter: new Hook(this),
+		afterParsed: new Hook(this),
+		beforePageLayout: new Hook(this),
+		onPageLayout: new Hook(this),
+		layout: new Hook(this),
+		renderNode: new Hook(this),
+		layoutNode: new Hook(this),
+		onOverflow: new Hook(this),
+		afterOverflowRemoved: new Hook(this),
+		afterOverflowAdded: new Hook(this),
+		onBreakToken: new Hook(),
+		beforeRenderResult: new Hook(this),
+		afterPageLayout: new Hook(this),
+		finalizePage: new Hook(this),
+		afterRendered: new Hook(this),
+	};
+	private pageTemplate?: HTMLTemplateElement;
+	private total = 0;
+	private readonly q = new Queue(this);
+	private stopped = false;
+	private rendered = false;
+	private readonly modifiedRules: Record<string, Record<string, CSSStyleRule[]>> = {};
+	private readonly charsPerBreak: number[] = [];
+	private source?: HTMLElement | DocumentFragment;
+	private breakToken?: BreakToken;
 
-		this.settings = options || {};
+	public pages: Page[] = [];
+	public pagesArea: HTMLDivElement | undefined;
 
-		this.hooks = {};
-		this.hooks.beforeParsed = new Hook(this);
-		this.hooks.filter = new Hook(this);
-		this.hooks.afterParsed = new Hook(this);
-		this.hooks.beforePageLayout = new Hook(this);
-		this.hooks.onPageLayout = new Hook(this);
-		this.hooks.layout = new Hook(this);
-		this.hooks.renderNode = new Hook(this);
-		this.hooks.layoutNode = new Hook(this);
-		this.hooks.onOverflow = new Hook(this);
-		this.hooks.afterOverflowRemoved = new Hook(this);
-		this.hooks.afterOverflowAdded = new Hook(this);
-		this.hooks.onBreakToken = new Hook();
-		this.hooks.beforeRenderResult = new Hook(this);
-		this.hooks.afterPageLayout = new Hook(this);
-		this.hooks.finalizePage = new Hook(this);
-		this.hooks.afterRendered = new Hook(this);
-
-		this.pages = [];
-		this.total = 0;
-
-		this.q = new Queue(this);
-		this.stopped = false;
-		this.rendered = false;
-
-		this.content = content;
-
-		this.modifiedRules = {};
-
-		this.charsPerBreak = [];
-		this.maxChars;
-
+	public constructor(content: HTMLElement | undefined, renderTo?: Element, public readonly settings?: ChunkerOptions) {
 		if (content) {
 			this.flow(content, renderTo);
 		}
 	}
 
-	setup(renderTo) {
+	public setup(renderTo?: Element) {
 		this.pagesArea = document.createElement("div");
 		this.pagesArea.classList.add("pagedjs_pages");
 
@@ -146,38 +166,36 @@ class Chunker {
 
 	}
 
-	rulesToDisable = [
-		'breakInside',
-		'overflow',
-		'overflowX',
-		'overflowY',
+	private readonly rulesToDisable: (string | Record<string, string>)[] = [
+		"breakInside",
+		"overflow",
+		"overflowX",
+		"overflowY",
 	];
 
-	recordRulesToDisable() {
-		for (var i in document.styleSheets) {
-			let sheet = document.styleSheets[i];
-			for (var j in sheet.cssRules) {
-				let rule = sheet.cssRules.item(j);
-				if (rule && rule.style) {
-					for (var k in this.rulesToDisable) {
-						let skip = false;
-						let disable = this.rulesToDisable[k];
+	private recordRulesToDisable() {
+		for (const i in document.styleSheets) {
+			const sheet = document.styleSheets[i];
+			for (const j in sheet.cssRules) {
+				const rule = sheet.cssRules.item(parseInt(j));
+				if (rule && rule instanceof CSSStyleRule) {
+					for (const k in this.rulesToDisable) {
+						const disable = this.rulesToDisable[k];
 						let attribName = disable;
-						if (typeof disable == 'object') {
-							attribName = Object.keys(disable)[0];
-							let value = disable[attribName];
+						let skip = false;
+						if (typeof attribName === "object") {
+							attribName = Object.keys(attribName)[0];
+							const value = disable[attribName];
 							skip = !rule.style[attribName] || rule.style[attribName] !== value;
 						}
 						else {
 							skip = !rule.style[attribName];
 						}
+
 						if (!skip) {
-							if (!this.modifiedRules[attribName]) {
-								this.modifiedRules[attribName] = [];
-							}
-							if (!this.modifiedRules[attribName][rule.style[attribName]]) {
-								this.modifiedRules[attribName][rule.style[attribName]] = [];
-							}
+							// TODO: this used to be initialized with []
+							this.modifiedRules[attribName] ??= {};
+							this.modifiedRules[attribName][rule.style[attribName]] ??= [];
 							this.modifiedRules[attribName][rule.style[attribName]].push(rule);
 						}
 					}
@@ -186,41 +204,39 @@ class Chunker {
 		}
 	}
 
-	disableRules(rendered) {
-		for (var i in this.modifiedRules) {
-			for (var j in this.modifiedRules[i]) {
-				for (var k in this.modifiedRules[i][j]) {
-					let rule = this.modifiedRules[i][j][k];
-					rule.style[i] = '';
-					let nodes = rendered.querySelectorAll(rule.selectorText);
+	private disableRules(rendered: HTMLElement | DocumentFragment) {
+		for (const i in this.modifiedRules) {
+			for (const j in this.modifiedRules[i]) {
+				for (const k in this.modifiedRules[i][j]) {
+					const rule = this.modifiedRules[i][j][k];
+					rule.style[i] = "";
+					const nodes = rendered.querySelectorAll<HTMLElement>(rule.selectorText);
 					nodes.forEach((node) => {
-						let attribName = i.substring(0, 1).toUpperCase() + i.substring(1);
+						const attribName = i.substring(0, 1).toUpperCase() + i.substring(1);
 						node.dataset[`original${attribName}`] = j;
-					})
+					});
 				}
 			}
 		}
 	}
 
-	enableRules(rendered) {
-		for (var i in this.modifiedRules) {
-			for (var j in this.modifiedRules[i]) {
-				for (var k in this.modifiedRules[i][j]) {
-					let rule = this.modifiedRules[i][j][k];
+	private enableRules(rendered: HTMLElement | DocumentFragment) {
+		for (const i in this.modifiedRules) {
+			for (const j in this.modifiedRules[i]) {
+				for (const k in this.modifiedRules[i][j]) {
+					const rule = this.modifiedRules[i][j][k];
 					rule.style[i] = j;
-					let nodes = rendered.querySelectorAll(rule.selectorText);
+					const nodes = rendered.querySelectorAll<HTMLElement>(rule.selectorText);
 					nodes.forEach((node) => {
-						let attribName = i.substring(0, 1).toUpperCase() + i.substring(2);
+						const attribName = i.substring(0, 1).toUpperCase() + i.substring(2);
 						delete(node.dataset[`original${attribName}`]);
-					})
+					});
 				}
 			}
 		}
 	}
 
-	async flow(content, renderTo) {
-		let parsed;
-
+	public async flow(content: HTMLElement | DocumentFragment | undefined, renderTo: Element | undefined) {
 		await this.hooks.beforeParsed.trigger(content, this);
 
 		if (content) {
@@ -228,7 +244,8 @@ class Chunker {
 			this.disableRules(content);
 		}
 
-		parsed = new ContentParser(content);
+		// TODO: the constructor is returning a value.
+		const parsed = new ContentParser(content) as unknown as HTMLElement | DocumentFragment;
 
 		this.hooks.filter.triggerSync(parsed);
 
@@ -255,7 +272,7 @@ class Chunker {
 		}
 
 		this.rendered = true;
-		this.pagesArea.style.setProperty("--pagedjs-page-count", this.total);
+		this.pagesArea.style.setProperty("--pagedjs-page-count", String(this.total));
 
 		await this.hooks.afterRendered.trigger(this.pages, this);
 
@@ -266,39 +283,11 @@ class Chunker {
 		return this;
 	}
 
-	// oversetPages() {
-	// 	let overset = [];
-	// 	for (let i = 0; i < this.pages.length; i++) {
-	// 		let page = this.pages[i];
-	// 		if (page.overset) {
-	// 			overset.push(page);
-	// 			// page.overset = false;
-	// 		}
-	// 	}
-	// 	return overset;
-	// }
-	//
-	// async handleOverset(parsed) {
-	// 	let overset = this.oversetPages();
-	// 	if (overset.length) {
-	// 		console.log("overset", overset);
-	// 		let index = this.pages.indexOf(overset[0]) + 1;
-	// 		console.log("INDEX", index);
-	//
-	// 		// Remove pages
-	// 		// this.removePages(index);
-	//
-	// 		// await this.render(parsed, overset[0].overset);
-	//
-	// 		// return this.handleOverset(parsed);
-	// 	}
-	// }
-
-	async render(parsed, startAt) {
-		let renderer = this.layout(parsed, startAt);
+	private async render(parsed: HTMLElement | DocumentFragment, startAt: BreakToken | undefined) {
+		const renderer = this.layout(parsed, startAt);
 
 		let done = false;
-		let result;
+		let result: { value?: BreakToken | false, done?: boolean, canceled?: boolean };
 
 		let loops = 0;
 		while (!done) {
@@ -316,37 +305,20 @@ class Chunker {
 		return result;
 	}
 
-	start() {
+	private start() {
 		this.rendered = false;
 		this.stopped = false;
 	}
 
-	stop() {
+	private stop() {
 		this.stopped = true;
-		// this.q.clear();
 	}
 
-	renderOnIdle(renderer) {
-		return new Promise(resolve => {
-			requestIdleCallback(async () => {
-				if (this.stopped) {
-					return resolve({ done: true, canceled: true });
-				}
-				let result = await renderer.next();
-				if (this.stopped) {
-					resolve({ done: true, canceled: true });
-				} else {
-					resolve(result);
-				}
-			});
-		});
-	}
-
-	async renderAsync(renderer) {
+	private async renderAsync(renderer: AsyncIterator<BreakToken | false>) {
 		if (this.stopped) {
 			return { done: true, canceled: true };
 		}
-		let result = await renderer.next();
+		const result = await renderer.next();
 		if (this.stopped) {
 			return { done: true, canceled: true };
 		} else {
@@ -354,31 +326,31 @@ class Chunker {
 		}
 	}
 
-	async handleBreaks(node, force) {
-		let currentPage = this.total + 1;
-		let currentPosition = currentPage % 2 === 0 ? "left" : "right";
+	private async handleBreaks(node: Text | HTMLElement | DocumentFragment, force?: boolean) {
+		const currentPage = this.total + 1;
+		const currentPosition = currentPage % 2 === 0 ? "left" : "right";
 		// TODO: Recto and Verso should reverse for rtl languages
-		let currentSide = currentPage % 2 === 0 ? "verso" : "recto";
-		let previousBreakAfter;
-		let breakBefore;
-		let page;
+		const currentSide = currentPage % 2 === 0 ? "verso" : "recto";
 
 		if (currentPage === 1) {
 			return;
 		}
 
+		let previousBreakAfter: string | undefined;
 		if (node &&
-				typeof node.dataset !== "undefined" &&
+				"dataset" in node &&
 				typeof node.dataset.previousBreakAfter !== "undefined") {
 			previousBreakAfter = node.dataset.previousBreakAfter;
 		}
 
+		let breakBefore: string | undefined;
 		if (node &&
-				typeof node.dataset !== "undefined" &&
+				"dataset" in node &&
 				typeof node.dataset.breakBefore !== "undefined") {
 			breakBefore = node.dataset.breakBefore;
 		}
 
+		let page: Page | undefined;
 		if (force) {
 			page = this.addPage(true);
 		} else if( previousBreakAfter &&
@@ -409,25 +381,24 @@ class Chunker {
 		}
 	}
 
-	async *layout(content, startAt) {
-		let breakToken = startAt || false;
-		let page, prevPage, prevNumPages;
+	private async *layout(content: HTMLElement | DocumentFragment, startAt: BreakToken | undefined) {
+		let breakToken: BreakToken | undefined | false = startAt ?? false;
+		let page: Page | undefined;
+		let prevPage: HTMLElement | undefined;
 
 		while (breakToken !== undefined && (MAX_PAGES ? this.total < MAX_PAGES : true)) {
 
-			let range;
+			let range: Range | undefined;
 			if (page && page.area.firstElementChild && page.area.firstElementChild.childElementCount) {
 				range = document.createRange();
 				range.selectNode(page.area.firstElementChild.childNodes[0]);
 				range.setEndAfter(page.area.firstElementChild.lastChild);
 			}
 
-			let addedExtra = false;
-			let emptyBody = !range || !range.getBoundingClientRect().height;
-			let emptyFootnotes = !page || !page.footnotesArea.firstElementChild || !page.footnotesArea.firstElementChild.childElementCount || !page.footnotesArea.firstElementChild.firstElementChild.getBoundingClientRect().height;
-			let emptyPage = (emptyBody && emptyFootnotes);
-
-			prevNumPages = this.total;
+			const emptyBody = !range || !range.getBoundingClientRect().height;
+			const emptyFootnotes = !page || !page.footnotesArea.firstElementChild || !page.footnotesArea.firstElementChild.childElementCount || !page.footnotesArea.firstElementChild.firstElementChild.getBoundingClientRect().height;
+			const emptyPage = emptyBody && emptyFootnotes;
+			const prevNumPages = this.total;
 
 			if (!page || !emptyPage) {
 				if (breakToken) {
@@ -439,11 +410,11 @@ class Chunker {
 						await this.handleBreaks(breakToken.node);
 					}
 				} else {
-					await this.handleBreaks(content.firstChild);
+					await this.handleBreaks(content.firstChild as HTMLElement);
 				}
 			}
 
-			addedExtra = this.total != prevNumPages;
+			const addedExtra = this.total != prevNumPages;
 
 			// Don't add a page if we have a forced break now and we just
 			// did a break due to overflow but have nothing displayed on
@@ -454,11 +425,11 @@ class Chunker {
 
 			page = this.pages[this.total - 1];
 
-			await this.hooks.beforePageLayout.trigger(page, content, breakToken, this);
+			await this.hooks.beforePageLayout.trigger(page, content, breakToken || undefined, this);
 			this.emit("page", page);
 
 			// Layout content in the page, starting from the breakToken.
-			breakToken = await page.layout(content, breakToken, prevPage);
+			breakToken = await page.layout(content, breakToken || undefined, prevPage);
 
 			await this.hooks.afterPageLayout.trigger(page.element, page, breakToken, this);
 			await this.hooks.finalizePage.trigger(page.element, page, undefined, this);
@@ -473,7 +444,7 @@ class Chunker {
 
 	}
 
-	recoredCharLength(length) {
+	private recoredCharLength(length: number) {
 		if (length === 0) {
 			return;
 		}
@@ -484,11 +455,9 @@ class Chunker {
 		if (this.charsPerBreak.length > 4) {
 			this.charsPerBreak.shift();
 		}
-
-		this.maxChars = this.charsPerBreak.reduce((a, b) => a + b, 0) / (this.charsPerBreak.length);
 	}
 
-	removePages(fromIndex=0) {
+	private removePages(fromIndex=0) {
 
 		if (fromIndex >= this.pages.length) {
 			return;
@@ -508,10 +477,10 @@ class Chunker {
 		this.total = this.pages.length;
 	}
 
-	addPage(blank) {
-		let lastPage = this.pages[this.pages.length - 1];
+	private addPage(blank?: boolean) {
+		const lastPage = this.pages[this.pages.length - 1];
 		// Create a new page from the template
-		let page = new Page(this.pagesArea, this.pageTemplate, blank, this.hooks, this.settings);
+		const page = new Page(this.pagesArea, this.pageTemplate, blank, this.hooks, this.settings);
 
 		this.pages.push(page);
 
@@ -530,7 +499,7 @@ class Chunker {
 					return;
 				}
 
-				let index = this.pages.indexOf(page) + 1;
+				const index = this.pages.indexOf(page) + 1;
 
 				// Stop the rendering
 				this.stop();
@@ -541,7 +510,7 @@ class Chunker {
 				// Remove pages
 				this.removePages(index);
 
-				if (this.rendered === true) {
+				if (this.rendered) {
 					this.rendered = false;
 
 					this.q.enqueue(async () => {
@@ -557,62 +526,17 @@ class Chunker {
 
 
 			});
-
-			page.onUnderflow((overflowToken) => {
-				// console.log("underflow on", page.id, overflowToken);
-
-				// page.append(this.source, overflowToken);
-
-			});
 		}
 
 		this.total = this.pages.length;
 
 		return page;
 	}
-	/*
-	insertPage(index, blank) {
-		let lastPage = this.pages[index];
-		// Create a new page from the template
-		let page = new Page(this.pagesArea, this.pageTemplate, blank, this.hooks);
 
-		let total = this.pages.splice(index, 0, page);
+	public async clonePage(originalPage: Page) {
+		const lastPage = this.pages[this.pages.length - 1];
 
-		// Create the pages
-		page.create(undefined, lastPage && lastPage.element);
-
-		page.index(index + 1);
-
-		for (let i = index + 2; i < this.pages.length; i++) {
-			this.pages[i].index(i);
-		}
-
-		if (!blank) {
-			// Listen for page overflow
-			page.onOverflow((overflowToken) => {
-				if (total < this.pages.length) {
-					this.pages[total].layout(this.source, overflowToken);
-				} else {
-					let newPage = this.addPage();
-					newPage.layout(this.source, overflowToken);
-				}
-			});
-
-			page.onUnderflow(() => {
-				// console.log("underflow on", page.id);
-			});
-		}
-
-		this.total += 1;
-
-		return page;
-	}
-	*/
-
-	async clonePage(originalPage) {
-		let lastPage = this.pages[this.pages.length - 1];
-
-		let page = new Page(this.pagesArea, this.pageTemplate, false, this.hooks);
+		const page = new Page(this.pagesArea, this.pageTemplate, false, this.hooks);
 
 		this.pages.push(page);
 
@@ -635,30 +559,37 @@ class Chunker {
 		this.emit("renderedPage", page);
 	}
 
-	loadFonts() {
-		let fontPromises = [];
-		(document.fonts || []).forEach((fontFace) => {
-			if (fontFace.status !== "loaded") {
-				let fontLoaded = fontFace.load().then((r) => {
-					return fontFace.family;
-				}, (r) => {
-					console.warn("Failed to preload font-family:", fontFace.family);
-					return fontFace.family;
-				});
-				fontPromises.push(fontLoaded);
-			}
-		});
-		return Promise.all(fontPromises).catch((err) => {
+	private async loadFonts() {
+		try {
+			const fontPromises: Promise<string>[] = [];
+			(document.fonts ?? []).forEach((fontFace: FontFace) => {
+				if (fontFace.status !== "loaded") {
+					const fontLoaded = fontFace.load().then(() => {
+						return fontFace.family;
+					}, () => {
+						console.warn("Failed to preload font-family:", fontFace.family);
+						return fontFace.family;
+					});
+					fontPromises.push(fontLoaded);
+				}
+			});
+
+			return await Promise.all(fontPromises);
+		} catch(err) {
 			console.warn(err);
-		});
+			return [];
+		}
 	}
 
-	destroy() {
+	public destroy() {
 		this.pagesArea.remove();
 		this.pageTemplate.remove();
 	}
 
 }
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging
+declare interface Chunker extends Emitter {}
 
 EventEmitter(Chunker.prototype);
 
