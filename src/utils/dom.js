@@ -195,7 +195,6 @@ export function rebuildTableRow(node, alreadyRendered, existingChildren) {
 	// Duplicate rowspans and our initial columns.
 	while (currentCol < maxCols) {
 		let earlierRow = node.parentElement.children[0];
-		let earlierRowIndex = 0;
 		let rowspan, column;
 		// Find the nth column we'll duplicate (rowspan) or use.
 		while (earlierRow && earlierRow !== node) {
@@ -216,7 +215,6 @@ export function rebuildTableRow(node, alreadyRendered, existingChildren) {
 				}
 			}
 			earlierRow = earlierRow.nextElementSibling;
-			earlierRowIndex++;
 		}
 
 		let destColumn;
@@ -279,7 +277,7 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 	for (var i = 0; i < ancestors.length; i++) {
 		subject = ancestors[i];
 
-		let container, split;
+		let container;
 		if (added.length) {
 			container = added[added.length - 1];
 		} else {
@@ -299,7 +297,6 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 			while (sibling) {
 				let existing = findElement(sibling, container), siblingClone;
 				if (!existing) {
-					let split = inIndexOfRefs(subject, alreadyRendered);
 					siblingClone = cloneNodeAncestor(sibling);
 					if (alreadyRendered) {
 						let originalElement = findElement(sibling, alreadyRendered);
@@ -363,6 +360,8 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 								// testing. :(
 								// Next step is to change the "true" below to use a custom
 								// attribute that lets you control whether the header is shown.
+								//
+								// eslint-disable-next-line no-constant-condition
 								if (true) {
 									pos.style.visibility = 'collapse';
 									pos.style.marginTop = '0px';
@@ -387,7 +386,7 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 			sibling = sibling.nextElementSibling;
 		}
 
-		split = inIndexOfRefs(subject, alreadyRendered);
+		let split = inIndexOfRefs(subject, alreadyRendered);
 		if (split) {
 			setSplit(split, parent);
 		}
@@ -459,7 +458,7 @@ export function rebuildAncestors (node) {
 	for (var i = 0; i < ancestors.length; i++) {
 		ancestor = ancestors[i];
 		parent = ancestor.cloneNode(false);
-	
+
 		parent.setAttribute("data-split-from", parent.getAttribute("data-ref"));
 
 		if (parent.hasAttribute("id")) {
@@ -494,7 +493,7 @@ export function rebuildAncestors (node) {
 				parent.parentElement.insertBefore(sib, prev);
 				prev = sib;
 			}
-			
+
 		}
 	}
 

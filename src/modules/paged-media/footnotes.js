@@ -483,7 +483,7 @@ class Footnotes extends Handler {
 				// Adjust the range to take the entire footnote.
 				let range = document.createRange();
 				range.selectNode(footnoteContainer);
-				range.setEndAfter(footnoteContainer)
+				range.setEndAfter(footnoteContainer);
 				extracted = range.extractContents();
 			}
 
@@ -601,7 +601,7 @@ class Footnotes extends Handler {
 		if (this.overflow.length) {
 			this.overflow.forEach((item) => {
 				notesInnerContent.appendChild(item);
-				let call = rendered.querySelector(`[data-ref="${item.dataset['ref']}"]`)
+				let call = rendered.querySelector(`[data-ref="${item.dataset['ref']}"]`);
 				this.recalcFootnotesHeight(item, noteContent, area, call, false);
 			});
 
