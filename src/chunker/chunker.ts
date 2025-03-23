@@ -1,7 +1,7 @@
 import type BreakToken from "./breaktoken";
 import Page from "./page";
 import type { PageHooks, PageOptions } from "./page";
-import ContentParser from "./parser.js";
+import ContentParser from "./parser";
 import EventEmitter from "event-emitter";
 import type { Emitter } from "event-emitter";
 import Hook from "../utils/hook.js";
@@ -233,8 +233,7 @@ class Chunker {
 			this.disableRules(content);
 		}
 
-		// TODO: the constructor is returning a value.
-		const parsed = new ContentParser(content) as unknown as HTMLElement | DocumentFragment;
+		const parsed = new ContentParser(content).dom;
 
 		this.hooks.filter.triggerSync(parsed);
 
