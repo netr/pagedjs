@@ -1,5 +1,6 @@
 import type BreakToken from "./breaktoken";
-import Page from "./page.js";
+import Page from "./page";
+import type { PageHooks, PageOptions } from "./page";
 import ContentParser from "./parser.js";
 import EventEmitter from "event-emitter";
 import type { Emitter } from "event-emitter";
@@ -83,29 +84,17 @@ const TEMPLATE = `
 	</div>
 </div>`;
 
-export type ChunkerHooks = Record<
+export type ChunkerHooks = PageHooks & Record<
 	"beforeParsed" |
 	"filter" |
 	"afterParsed" |
 	"beforePageLayout" |
-
-	"onPageLayout" |
-	"layout" |
-	"renderNode" |
-	"layoutNode" |
-	"onOverflow" |
-	"afterOverflowRemoved" |
-	"afterOverflowAdded" |
-	"onBreakToken" |
-	"beforeRenderResult" |
-
 	"afterPageLayout" |
 	"finalizePage" |
 	"afterRendered", Hook>;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface ChunkerOptions {
-}
+export interface ChunkerOptions extends PageOptions {}
 
 /**
  * Chop up text into flows
