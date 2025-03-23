@@ -4,15 +4,14 @@
  */
 class Overflow {
 
-	constructor(node, offset, overflowHeight, range, topLevel) {
-		this.node = node;
-		this.offset = offset;
-		this.overflowHeight = overflowHeight;
-		this.range = range;
-		this.topLevel = topLevel;
-	}
+	public constructor(
+		public readonly node: Text | HTMLElement | DocumentFragment,
+		public readonly offset: number,
+		public readonly overflowHeight: number,
+		public readonly range: Range,
+		public readonly topLevel: boolean) {}
 
-	equals(otherOffset) {
+	equals(otherOffset: Overflow | undefined | null) {
 		if (!otherOffset) {
 			return false;
 		}

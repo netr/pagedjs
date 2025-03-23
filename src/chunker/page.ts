@@ -2,22 +2,13 @@ import EventEmitter from "event-emitter";
 import type { Emitter } from "event-emitter";
 
 import BreakToken from "./breaktoken";
-import Layout from "./layout.js";
-import type Hook from "../utils/hook.js";
+import Layout from "./layout";
+import type { LayoutHooks, LayoutOptions } from "./layout";
 
-export type PageHooks = Partial<Record<
-	"onPageLayout" |
-	"layout" |
-	"renderNode" |
-	"layoutNode" |
-	"onOverflow" |
-	"afterOverflowRemoved" |
-	"afterOverflowAdded" |
-	"onBreakToken" |
-	"beforeRenderResult", Hook>>;
+export type PageHooks = LayoutHooks;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface PageOptions {}
+export interface PageOptions extends LayoutOptions {}
 
 /**
  * Render a page

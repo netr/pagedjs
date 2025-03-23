@@ -1,9 +1,11 @@
+import type Overflow from "./overflow";
+
 /**
  * BreakToken
  * @class
  */
 class BreakToken {
-	private finished = false;
+	public finished = false;
 	private breakNeededAt: HTMLElement[] = [];
 
 	public constructor(public readonly node: Text | HTMLElement, public readonly overflow: Overflow[] = []) {}
