@@ -2,6 +2,7 @@ import { nodeResolve } from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
 import terser from "@rollup/plugin-terser";
+import typescript from "@rollup/plugin-typescript";
 import license from "rollup-plugin-license";
 
 import pkg from "./package.json" with {
@@ -10,8 +11,9 @@ import pkg from "./package.json" with {
 
 const plugins = [
 	nodeResolve({
-		extensions: [".cjs",".mjs", ".js"]
+		extensions: [".cjs", ".mjs", ".js", ".ts"]
 	}),
+	typescript(),
 	commonjs({
 		include: "node_modules/**"
 	}),

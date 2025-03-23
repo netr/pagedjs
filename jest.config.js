@@ -1,7 +1,11 @@
 export default {
-	testMatch: ["**/?(*.)(test).js"],
+	testMatch: [
+		"**/?(*.)(test).js",
+		"**/?(*.)(test).ts",
+	],
 	testEnvironment: "jsdom",
 	transform: {
-		"\\.js$": ["babel-jest", { configFile: "./babel-jest.config.json" }]
+		"\\.js$": ["babel-jest", { configFile: "./babel-jest.config.json" }],
+		"\\.ts$": ["babel-jest", { configFile: "./babel-jest.config.json" }],
 	},
 };

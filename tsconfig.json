@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"declaration": true,
+		"declarationDir": "dist/",
+		"emitDeclarationOnly": true,
+		"esModuleInterop": true,
+		"isolatedModules": true,
+		"module": "es2020",
+		"moduleResolution": "bundler",
+		"noEmit": true,
+		"target": "es2020"
+	},
+
+	"include": ["src/**/*.ts"]
+}
