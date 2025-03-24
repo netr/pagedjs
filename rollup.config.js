@@ -30,7 +30,8 @@ export default [
 		output: {
 			name: "Paged",
 			file: pkg.browser,
-			format: "umd"
+			format: "umd",
+			sourcemap: true,
 		},
 		plugins: plugins
 	},
@@ -40,7 +41,8 @@ export default [
 		output: {
 			name: "PagedModule",
 			file: "./dist/paged.esm.js",
-			format: "es"
+			format: "es",
+			sourcemap: true,
 		},
 		plugins: plugins
 	},
@@ -50,7 +52,8 @@ export default [
 		output: {
 			name: "PagedPolyfill",
 			file: "./dist/paged.polyfill.js",
-			format: "umd"
+			format: "umd",
+			sourcemap: true,
 		},
 		plugins: plugins
 	},
@@ -61,7 +64,8 @@ export default [
 		output: {
 			name: "PagedModule",
 			file: "./dist/paged.min.js",
-			format: "umd"
+			format: "umd",
+			sourcemap: true,
 		},
     plugins: [plugins, terser()]
 	},
@@ -70,7 +74,8 @@ export default [
 		output: {
 			name: "PagedPolyfill",
 			file: "./dist/paged.polyfill.min.js",
-			format: "umd"
+			format: "umd",
+			sourcemap: true,
 		},
 		plugins: [plugins, terser()]
 	},
