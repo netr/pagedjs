@@ -1,6 +1,6 @@
 import Handler from "../handler.js";
 import csstree from "css-tree";
-import { displayedElementAfter, displayedElementBefore, needsPageBreak } from "../../utils/dom.js";
+import { displayedElementAfter, displayedElementBefore, needsPageBreak } from "../../utils/dom";
 
 class Breaks extends Handler {
 	constructor(chunker, polisher, caller) {

@@ -1,7 +1,7 @@
 import Handler from "../handler.js";
 import csstree from "css-tree";
 import pageSizes from "../../polisher/sizes";
-import { findElement, rebuildAncestors } from "../../utils/dom.js";
+import { findElement, rebuildAncestors } from "../../utils/dom";
 import { CSSValueToString } from "../../utils/utils.js";
 
 class AtPage extends Handler {

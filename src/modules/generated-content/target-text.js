@@ -1,6 +1,6 @@
 import Handler from "../handler.js";
 import { UUID, attr, querySelectorEscape } from "../../utils/utils.js";
-import { cleanPseudoContent } from "../../utils/css.js";
+import { cleanPseudoContent } from "../../utils/css";
 import csstree from "css-tree";
 // import { nodeAfter } from "../../utils/dom";
 
@@ -107,7 +107,7 @@ class TargetText extends Handler {
 						if (split.length > 1) {
 							psuedo += "::" + split[1];
 						}
-						
+
 						if (target.style === "before" || target.style === "after") {
 							const pseudoType = `${target.style}Content`;
 							textContent = cleanPseudoContent(this[pseudoType]);
@@ -126,4 +126,3 @@ class TargetText extends Handler {
 }
 
 export default TargetText;
-

@@ -1,14 +1,18 @@
 import { getBoundingClientRect } from "./utils.js";
-export function isElement(node) {
 
-	return node && node.nodeType === 1;
+export function isElement(node: Node | undefined | null): node is Element {
+	return node && node.nodeType === Node.ELEMENT_NODE;
 }
 
-export function isText(node) {
-	return node && node.nodeType === 3;
+export function isHTMLElement(node: Node | undefined | null): node is HTMLElement {
+	return isElement(node) && node instanceof HTMLElement;
 }
 
-export function* walk(start, limiter) {
+export function isText(node: Node | undefined | null): node is Text {
+	return node && node.nodeType === Node.TEXT_NODE;
+}
+
+export function* walk(start: Node, limiter: Node) {
 	let node = start;
 
 	while (node) {
@@ -40,12 +44,12 @@ export function* walk(start, limiter) {
 	}
 }
 
-export function nodeAfter(node, limiter, descend = false) {
+export function nodeAfter(node: Node, limiter?: Node, descend = false): Node | null {
 	if (limiter && node === limiter) {
-		return;
+		return null;
 	}
 	if (descend && node.childNodes.length) {
-		let child = node.firstChild;
+		let child = node.firstChild as Node | null;
 		if (isIgnorable(child)) {
 			child = nextSignificantNode(child);
 		}
@@ -60,7 +64,7 @@ export function nodeAfter(node, limiter, descend = false) {
 	if (node.parentNode) {
 		while ((node = node.parentNode)) {
 			if (limiter && node === limiter) {
-				return;
+				return null;
 			}
 			significantNode = nextSignificantNode(node);
 			if (significantNode) {
@@ -70,11 +74,11 @@ export function nodeAfter(node, limiter, descend = false) {
 	}
 }
 
-function findLastSignificantDescendant(node) {
+function findLastSignificantDescendant(node: Node) {
 	let done = false;
 
 	while (!done) {
-		let child = node.lastChild;
+		let child = node.lastChild as Node | null;
 		if (child && isIgnorable(child)) {
 			child = previousSignificantNode(child);
 		}
@@ -89,10 +93,10 @@ function findLastSignificantDescendant(node) {
 	return node;
 }
 
-export function nodeBefore(node, limiter, descend = false) {
+export function nodeBefore(node: Node, limiter: Node, descend = false): Node | null {
 	do {
 		if (limiter && node === limiter) {
-			return;
+			return null;
 		}
 
 		let significantNode = previousSignificantNode(node);
@@ -107,28 +111,28 @@ export function nodeBefore(node, limiter, descend = false) {
 	} while (node);
 }
 
-export function elementAfter(node, limiter, descend = false) {
+export function elementAfter<T extends Element = Element>(node: Node, limiter: Node, descend = false) {
 	let after = nodeAfter(node, limiter, descend);
 
-	while (after && after.nodeType !== 1) {
+	while (after && after.nodeType !== Node.ELEMENT_NODE) {
 		after = nodeAfter(after, limiter, descend);
 	}
 
-	return after;
+	return after as T | null;
 }
 
-export function elementBefore(node, limiter, descend = false) {
+export function elementBefore<T extends Element = Element>(node: Node, limiter: Node, descend = false) {
 	let before = nodeBefore(node, limiter, descend);
 
-	while (before && before.nodeType !== 1) {
+	while (before && before.nodeType !== Node.ELEMENT_NODE) {
 		before = nodeBefore(before, limiter, descend);
 	}
 
-	return before;
+	return before as T | null;
 }
 
-export function displayedElementAfter(node, limiter, descend = false) {
-	let after = elementAfter(node, limiter, descend);
+export function displayedElementAfter(node: Node, limiter: Node, descend = false) {
+	let after = elementAfter<HTMLElement>(node, limiter, descend);
 
 	while (after && after.dataset.undisplayed) {
 		after = elementAfter(after, limiter, descend);
@@ -137,8 +141,8 @@ export function displayedElementAfter(node, limiter, descend = false) {
 	return after;
 }
 
-export function displayedElementBefore(node, limiter, descend = false) {
-	let before = elementBefore(node, limiter, descend);
+export function displayedElementBefore(node: Node, limiter: Node, descend = false) {
+	let before = elementBefore<HTMLElement>(node, limiter, descend);
 
 	while (before && before.dataset.undisplayed) {
 		before = elementBefore(before, limiter, descend);
@@ -147,31 +151,31 @@ export function displayedElementBefore(node, limiter, descend = false) {
 	return before;
 }
 
-export function stackChildren(currentNode, stacked) {
-	let stack = stacked || [];
+export function stackChildren(currentNode: Element, stacked?: Element[]) {
+	const stack = stacked ?? [];
 
 	stack.unshift(currentNode);
 
-	let children = currentNode.children;
-	for (var i = 0, length = children.length; i < length; i++) {
+	const children = currentNode.children;
+	for (let i = 0, length = children.length; i < length; i++) {
 		stackChildren(children[i], stack);
 	}
 
 	return stack;
 }
 
-function copyWidth(originalElement, destElement) {
-	let originalStyle = getComputedStyle(originalElement);
-	let bounds = getBoundingClientRect(originalElement);
-	let width = parseInt(originalStyle.width || bounds.width);
+function copyWidth(originalElement: HTMLElement, destElement: HTMLElement) {
+	const originalStyle = getComputedStyle(originalElement);
+	const bounds = getBoundingClientRect(originalElement);
+	const width = originalStyle.width ? parseInt(originalStyle.width) : bounds.width;
 	if (width) {
-		destElement.style.width = width + 'px';
+		destElement.style.width = width + "px";
 	}
 }
 
-export function rebuildTableRow(node, alreadyRendered, existingChildren) {
+export function rebuildTableRow(node: HTMLTableRowElement, alreadyRendered: Element | DocumentFragment, existingChildren: number) {
 	let currentCol = 0, maxCols = 0, nextInitialColumn = 0;
-	let rebuilt = node.cloneNode(false);
+	const rebuilt = node.cloneNode(false) as HTMLTableRowElement;
 	const initialColumns = Array.from(node.children);
 
 	// Find the max number of columns.
@@ -184,22 +188,23 @@ export function rebuildTableRow(node, alreadyRendered, existingChildren) {
 	}
 
 	if (!maxCols) {
-		let existing = findElement(node, alreadyRendered);
+		const existing = findElement(node, alreadyRendered);
 		maxCols = existing?.children.length || 0;
 	}
 
 	// The next td to use in each tr.
 	// Doesn't take account of rowspans above that might make extra columns.
-	let rowOffsets = Array(maxCols).fill(0);
+	const rowOffsets = Array(maxCols).fill(0);
 
 	// Duplicate rowspans and our initial columns.
 	while (currentCol < maxCols) {
 		let earlierRow = node.parentElement.children[0];
-		let rowspan, column;
+		let rowspan: number | undefined;
+		let column: HTMLTableCellElement;
 		// Find the nth column we'll duplicate (rowspan) or use.
 		while (earlierRow && earlierRow !== node) {
 			if (rowspan == undefined) {
-				column = earlierRow.children[currentCol - rowOffsets[nextInitialColumn]];
+				column = earlierRow.children[currentCol - rowOffsets[nextInitialColumn]] as HTMLTableCellElement;
 				if (column && column.rowSpan !== undefined && column.rowSpan > 1) {
 					rowspan = column.rowSpan;
 				}
@@ -217,22 +222,22 @@ export function rebuildTableRow(node, alreadyRendered, existingChildren) {
 			earlierRow = earlierRow.nextElementSibling;
 		}
 
-		let destColumn;
+		let destColumn: HTMLTableCellElement | undefined;
 		if (rowspan) {
 			if (!existingChildren) {
-				destColumn = column.cloneNode(false);
+				destColumn = column.cloneNode(false) as HTMLTableCellElement;
 				// Adjust rowspan value.
 				destColumn.rowSpan = !column.rowSpan ? 0 : rowspan;
 			}
 		} else {
 			// Fill the gap with the initial columns (if exists).
-			destColumn = column = initialColumns[nextInitialColumn++]?.cloneNode(false);
+			destColumn = column = initialColumns[nextInitialColumn++]?.cloneNode(false) as HTMLTableCellElement;
 		}
 		if (column && destColumn) {
 			if (alreadyRendered) {
-				let existing = findElement(column, alreadyRendered);
+				const existing = findElement(column, alreadyRendered);
 				if (existing) {
-					column = existing;
+					column = existing as HTMLTableCellElement;
 				}
 			}
 			copyWidth(column, destColumn);
@@ -245,12 +250,11 @@ export function rebuildTableRow(node, alreadyRendered, existingChildren) {
 	return rebuilt;
 }
 
-export function rebuildTree (node, fragment, alreadyRendered) {
-	let parent, subject;
-	let ancestors = [];
-	let added = [];
+export function rebuildTree(node: Text | HTMLElement, fragment?: DocumentFragment, alreadyRendered?: Element | DocumentFragment) {
+	const ancestors: HTMLElement[] = [];
+	let added: Element[] | undefined = [];
 	let dupSiblings = false;
-	let freshPage = !fragment;
+	const freshPage = !fragment;
 	let numListItems = 0;
 
 	if (!fragment) {
@@ -262,44 +266,44 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 
 	if (!isText(node)) {
 		ancestors.unshift(node);
-		if (node.tagName == "LI") {
+		if (node.tagName === "LI") {
 			numListItems++;
 		}
 	}
-	while (element.parentNode && element.parentNode.nodeType === 1) {
-		ancestors.unshift(element.parentNode);
-		if (element.parentNode.tagName == "LI") {
+	while (element.parentNode && isElement(element.parentNode)) {
+		ancestors.unshift(element.parentNode as HTMLElement);
+		if (element.parentNode.tagName === "LI") {
 			numListItems++;
 		}
-		element = element.parentNode;
+		element = element.parentNode as HTMLElement;
 	}
 
-	for (var i = 0; i < ancestors.length; i++) {
-		subject = ancestors[i];
-
-		let container;
+	for (const subject of ancestors) {
+		let container: Element | DocumentFragment;
 		if (added.length) {
 			container = added[added.length - 1];
 		} else {
 			container = fragment;
 		}
 
-		if (subject.nodeName == "TR") {
+		let parent: HTMLElement | undefined;
+		if (subject.nodeName === "TR") {
 			parent = findElement(subject, container);
 			if (!parent) {
-				parent = rebuildTableRow(subject, alreadyRendered, container.childElementCount);
+				parent = rebuildTableRow(subject as HTMLTableRowElement, alreadyRendered, container.childElementCount);
 				container.appendChild(parent);
 			}
 		}
 		else if (dupSiblings) {
-			let sibling = subject.parentElement ? subject.parentElement.children[0] : subject;
+			let sibling: HTMLElement | undefined = subject.parentElement ? subject.parentElement.children[0] as HTMLElement : subject;
 
 			while (sibling) {
-				let existing = findElement(sibling, container), siblingClone;
+				const existing = findElement(sibling, container);
+				let siblingClone: HTMLElement | undefined;
 				if (!existing) {
 					siblingClone = cloneNodeAncestor(sibling);
 					if (alreadyRendered) {
-						let originalElement = findElement(sibling, alreadyRendered);
+						const originalElement = findElement(sibling, alreadyRendered);
 						if (originalElement) {
 							copyWidth(originalElement, siblingClone);
 						}
@@ -310,20 +314,20 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 				if (sibling == subject) {
 					parent = siblingClone || existing;
 				}
-				sibling = sibling.nextElementSibling;
+				sibling = sibling.nextElementSibling as HTMLElement | undefined;
 			}
 		} else {
 			parent = findElement(subject, container);
 			if (!parent) {
 				parent = cloneNodeAncestor(subject);
 				if (alreadyRendered) {
-					let originalElement = findElement(subject, alreadyRendered);
+					const originalElement = findElement(subject, alreadyRendered);
 					if (originalElement) {
 						copyWidth(originalElement, parent);
 
 						// Colgroup to clone?
 						Array.from(originalElement.children).forEach(child => {
-							if (child.tagName == "COLGROUP") {
+							if (child.tagName === "COLGROUP") {
 								parent.append(child.cloneNode(true));
 							}
 						});
@@ -333,21 +337,22 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 			}
 		}
 
-		if (subject.previousElementSibling?.nodeName == 'THEAD') {
+		if (subject.previousElementSibling?.nodeName === "THEAD") {
 			// Clone the THEAD too.
 			let sibling = subject.previousElementSibling;
 
-			let existing = findElement(sibling, container), siblingClone;
+			const existing = findElement(sibling, container);
+			let siblingClone: Element | undefined;
 			if (!existing) {
 				siblingClone = cloneNodeAncestor(sibling, true);
 				if (alreadyRendered) {
 					let originalElement = findElement(sibling, alreadyRendered);
 					if (originalElement) {
-						let walker = walk(siblingClone, siblingClone);
-						let next, pos, done;
+						const walker = walk(siblingClone, siblingClone);
+						let done = false;
 						while (!done) {
-							next = walker.next();
-							pos = next.value;
+							const next = walker.next();
+							const pos = next.value as HTMLElement | undefined;
 							done = next.done;
 
 							if (isElement(pos)) {
@@ -363,15 +368,15 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 								//
 								// eslint-disable-next-line no-constant-condition
 								if (true) {
-									pos.style.visibility = 'collapse';
-									pos.style.marginTop = '0px';
-									pos.style.marginBottom = '0px';
-									pos.style.paddingTop = '0px';
-									pos.style.paddingBottom = '0px';
-									pos.style.borderTop = '0px';
-									pos.style.borderBottom = '0px';
-									pos.style.lineHeight = '0px';
-									pos.style.opacity = 0;
+									pos.style.visibility = "collapse";
+									pos.style.marginTop = "0px";
+									pos.style.marginBottom = "0px";
+									pos.style.paddingTop = "0px";
+									pos.style.paddingBottom = "0px";
+									pos.style.borderTop = "0px";
+									pos.style.borderBottom = "0px";
+									pos.style.lineHeight = "0px";
+									pos.style.opacity = "0";
 								}
 							}
 						}
@@ -380,22 +385,23 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 				container.insertBefore(siblingClone, container.firstChild);
 			}
 
-			if (sibling == subject) {
-				parent = siblingClone || existing;
+			if (sibling === subject) {
+				// TODO: siblingClone is never falsish.
+				parent = siblingClone as HTMLElement ?? existing;
 			}
 			sibling = sibling.nextElementSibling;
 		}
 
-		let split = inIndexOfRefs(subject, alreadyRendered);
+		const split = inIndexOfRefs(subject, alreadyRendered);
 		if (split) {
 			setSplit(split, parent);
 		}
 
-		dupSiblings = (subject.dataset.clonesiblings == true ||
-			['grid', 'flex', 'table-row'].indexOf(subject.style.display) > -1);
+		dupSiblings = (subject.dataset.clonesiblings === "true" ||
+			["grid", "flex", "table-row"].indexOf(subject.style.display) > -1);
 		added.push(parent);
 
-		if (subject.tagName == "LI") {
+		if (subject.tagName === "LI") {
 			numListItems--;
 		}
 
@@ -403,7 +409,7 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 			// Flag the first node on the page so we can suppress list styles on
 			// a continued item and list item numbers except the list one
 			// if an item number should be printed.
-			parent.dataset.suppressListStyle = true;
+			parent.dataset.suppressListStyle = "true";
 		}
 	}
 
@@ -411,7 +417,7 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 	return fragment;
 }
 
-function setSplit(orig, clone) {
+function setSplit(orig: HTMLElement, clone: HTMLElement) {
 	if (orig.dataset.splitTo) {
 		clone.setAttribute("data-split-from", clone.getAttribute("data-ref"));
 	}
@@ -420,11 +426,11 @@ function setSplit(orig, clone) {
 	orig.setAttribute("data-split-to", clone.getAttribute("data-ref"));
 }
 
-function cloneNodeAncestor (node, deep=false) {
-	let result = node.cloneNode(deep);
+function cloneNodeAncestor<T extends Element>(node: T, deep=false): T {
+	const result = node.cloneNode(deep) as T;
 
 	if (result.hasAttribute("id")) {
-		let dataID = result.getAttribute("id");
+		const dataID = result.getAttribute("id");
 		result.setAttribute("data-id", dataID);
 		result.removeAttribute("id");
 	}
@@ -441,28 +447,26 @@ function cloneNodeAncestor (node, deep=false) {
 	return result;
 }
 
-export function rebuildAncestors (node) {
-	let parent, ancestor;
-	let ancestors = [];
-	let added = [];
+export function rebuildAncestors(node: HTMLElement) {
+	const ancestors: HTMLElement[] = [];
+	let added: HTMLElement[] = [];
 
-	let fragment = document.createDocumentFragment();
+	const fragment = document.createDocumentFragment();
 
 	// Gather all ancestors
 	let element = node;
-	while(element.parentNode && element.parentNode.nodeType === 1) {
-		ancestors.unshift(element.parentNode);
-		element = element.parentNode;
+	while (element.parentNode && element.parentNode.nodeType === Node.ELEMENT_NODE) {
+		ancestors.unshift(element.parentNode as HTMLElement);
+		element = element.parentNode as HTMLElement;
 	}
 
-	for (var i = 0; i < ancestors.length; i++) {
-		ancestor = ancestors[i];
-		parent = ancestor.cloneNode(false);
+	for (const ancestor of ancestors) {
+		const parent = ancestor.cloneNode(false) as HTMLElement;
 
 		parent.setAttribute("data-split-from", parent.getAttribute("data-ref"));
 
 		if (parent.hasAttribute("id")) {
-			let dataID = parent.getAttribute("id");
+			const dataID = parent.getAttribute("id");
 			parent.setAttribute("data-id", dataID);
 			parent.removeAttribute("id");
 		}
@@ -477,7 +481,7 @@ export function rebuildAncestors (node) {
 		}
 
 		if (added.length) {
-			let container = added[added.length-1];
+			const container = added[added.length-1];
 			container.appendChild(parent);
 		} else {
 			fragment.appendChild(parent);
@@ -486,10 +490,10 @@ export function rebuildAncestors (node) {
 
 		// rebuild table rows
 		if (parent.nodeName === "TD" && ancestor.parentElement.contains(ancestor)) {
-			let td = ancestor;
+			let td: HTMLElement | undefined = ancestor;
 			let prev = parent;
-			while ((td = td.previousElementSibling)) {
-				let sib = td.cloneNode(false);
+			while ((td = td.previousElementSibling as HTMLElement | undefined)) {
+				const sib = td.cloneNode(false) as HTMLElement;
 				parent.parentElement.insertBefore(sib, prev);
 				prev = sib;
 			}
@@ -500,58 +504,9 @@ export function rebuildAncestors (node) {
 	added = undefined;
 	return fragment;
 }
-/*
-export function split(bound, cutElement, breakAfter) {
-		let needsRemoval = [];
-		let index = indexOf(cutElement);
 
-		if (!breakAfter && index === 0) {
-			return;
-		}
-
-		if (breakAfter && index === (cutElement.parentNode.children.length - 1)) {
-			return;
-		}
-
-		// Create a fragment with rebuilt ancestors
-		let fragment = rebuildTree(cutElement);
-
-		// Clone cut
-		if (!breakAfter) {
-			let clone = cutElement.cloneNode(true);
-			let ref = cutElement.parentNode.getAttribute('data-ref');
-			let parent = fragment.querySelector("[data-ref='" + ref + "']");
-			parent.appendChild(clone);
-			needsRemoval.push(cutElement);
-		}
-
-		// Remove all after cut
-		let next = nodeAfter(cutElement, bound);
-		while (next) {
-			let clone = next.cloneNode(true);
-			let ref = next.parentNode.getAttribute('data-ref');
-			let parent = fragment.querySelector("[data-ref='" + ref + "']");
-			parent.appendChild(clone);
-			needsRemoval.push(next);
-			next = nodeAfter(next, bound);
-		}
-
-		// Remove originals
-		needsRemoval.forEach((node) => {
-			if (node) {
-				node.remove();
-			}
-		});
-
-		// Insert after bounds
-		bound.parentNode.insertBefore(fragment, bound.nextSibling);
-		return [bound, bound.nextSibling];
-}
-*/
-
-export function needsBreakBefore(node) {
-	if( typeof node !== "undefined" &&
-			typeof node.dataset !== "undefined" &&
+export function needsBreakBefore(node: Node | undefined) {
+	if( isHTMLElement(node) &&
 			typeof node.dataset.breakBefore !== "undefined" &&
 			(node.dataset.breakBefore === "always" ||
 			 node.dataset.breakBefore === "page" ||
@@ -566,9 +521,8 @@ export function needsBreakBefore(node) {
 	return false;
 }
 
-export function needsBreakAfter(node) {
-	if( typeof node !== "undefined" &&
-			typeof node.dataset !== "undefined" &&
+export function needsBreakAfter(node: Node | undefined) {
+	if( isHTMLElement(node) &&
 			typeof node.dataset.breakAfter !== "undefined" &&
 			(node.dataset.breakAfter === "always" ||
 			 node.dataset.breakAfter === "page" ||
@@ -583,9 +537,8 @@ export function needsBreakAfter(node) {
 	return false;
 }
 
-export function needsPreviousBreakAfter(node) {
-	if( typeof node !== "undefined" &&
-			typeof node.dataset !== "undefined" &&
+export function needsPreviousBreakAfter(node: Node | undefined) {
+	if( isHTMLElement(node) &&
 			typeof node.dataset.previousBreakAfter !== "undefined" &&
 			(node.dataset.previousBreakAfter === "always" ||
 			 node.dataset.previousBreakAfter === "page" ||
@@ -600,21 +553,21 @@ export function needsPreviousBreakAfter(node) {
 	return false;
 }
 
-export function needsPageBreak(node, previousSignificantNode) {
+export function needsPageBreak(node: Node | undefined, previousSignificantNode: Node | undefined) {
 	if (typeof node === "undefined" || !previousSignificantNode || isIgnorable(node)) {
 		return false;
 	}
-	if (node.dataset && node.dataset.undisplayed) {
+	if (isHTMLElement(node) && node.dataset.undisplayed) {
 		return false;
 	}
-	let previousSignificantNodePage = previousSignificantNode.dataset ? previousSignificantNode.dataset.page : undefined;
+	let previousSignificantNodePage = isHTMLElement(previousSignificantNode) ? previousSignificantNode.dataset.page : undefined;
 	if (typeof previousSignificantNodePage === "undefined") {
 		const nodeWithNamedPage = getNodeWithNamedPage(previousSignificantNode);
 		if (nodeWithNamedPage) {
 			previousSignificantNodePage = nodeWithNamedPage.dataset.page;
 		}
 	}
-	let currentNodePage = node.dataset ? node.dataset.page : undefined;
+	let currentNodePage = isHTMLElement(node) ? node.dataset.page : undefined;
 	if (typeof currentNodePage === "undefined") {
 		const nodeWithNamedPage = getNodeWithNamedPage(node, previousSignificantNode);
 		if (nodeWithNamedPage) {
@@ -624,17 +577,16 @@ export function needsPageBreak(node, previousSignificantNode) {
 	return currentNodePage !== previousSignificantNodePage;
 }
 
-export function *words(node) {
-	let currentText = node.nodeValue;
-	let max = currentText.length;
+export function *words(node: Node) {
+	const currentText = node.nodeValue;
+	const max = currentText.length;
 	let currentOffset = 0;
-	let currentLetter;
 
-	let range;
+	let range: Range | undefined;
 	const significantWhitespaces = node.parentElement && node.parentElement.nodeName === "PRE";
 
 	while (currentOffset < max) {
-		currentLetter = currentText[currentOffset];
+		const currentLetter = currentText[currentOffset];
 		if (/^[\S\u202F\u00A0]$/.test(currentLetter) || significantWhitespaces) {
 			if (!range) {
 				range = document.createRange();
@@ -657,17 +609,13 @@ export function *words(node) {
 	}
 }
 
-export function *letters(wordRange) {
-	let currentText = wordRange.startContainer;
-	let max = currentText.length;
+export function *letters(wordRange: Range) {
+	const currentText = wordRange.startContainer as Text;
+	const max = currentText.length;
 	let currentOffset = wordRange.startOffset;
-	// let currentLetter;
 
-	let range;
-
-	while(currentOffset < max) {
-		 // currentLetter = currentText[currentOffset];
-		 range = document.createRange();
+	while (currentOffset < max) {
+		 const range = document.createRange();
 		 range.setStart(currentText, currentOffset);
 		 range.setEnd(currentText, currentOffset+1);
 
@@ -677,10 +625,8 @@ export function *letters(wordRange) {
 	}
 }
 
-export function isContainer(node) {
-	let container;
-
-	if (typeof node.tagName === "undefined") {
+export function isContainer(node: Node) {
+	if (!isHTMLElement(node)) {
 		return true;
 	}
 
@@ -738,28 +684,25 @@ export function isContainer(node) {
 		case "DD":
 		case "VIDEO":
 		case "CANVAS":
-			container = false;
-			break;
+			return false;
 		default:
-			container = true;
+			return true;
 	}
-
-	return container;
 }
 
-export function cloneNode(n, deep=false) {
-	return n.cloneNode(deep);
+export function cloneNode<T extends Node>(n: T, deep = false) {
+	return n.cloneNode(deep) as T;
 }
 
-export function inIndexOfRefs(node, doc) {
+export function inIndexOfRefs(node: Element, doc: (Element | DocumentFragment) & { indexOfRefs?: Record<string, HTMLElement> }) {
 	if (!doc || !doc.indexOfRefs) return;
 	const ref = node.getAttribute("data-ref");
 	return doc.indexOfRefs[ref];
 }
 
-export function replaceOrAppendElement(parentNode, child) {
+export function replaceOrAppendElement(parentNode: Element, child: Text | Element) {
 	if (!isText(child)) {
-		let childRef = child.getAttribute("data-ref");
+		const childRef = child.getAttribute("data-ref");
 		for (let index = 0; index < parentNode.children.length; index++) {
 			if (parentNode.children[index].getAttribute("data-ref") == childRef) {
 				parentNode.replaceChild(child, parentNode.childNodes[index]);
@@ -771,33 +714,33 @@ export function replaceOrAppendElement(parentNode, child) {
 	parentNode.appendChild(child);
 }
 
-export function findElement(node, doc, forceQuery) {
+export function findElement(node: Element, doc?: (Element | DocumentFragment) & { indexOfRefs?: Record<string, HTMLElement> }, forceQuery?: boolean) {
 	if (!doc) return;
 	const ref = node.getAttribute("data-ref");
 	return findRef(ref, doc, forceQuery);
 }
 
-export function findRef(ref, doc, forceQuery) {
+export function findRef(ref: string, doc: (Element | DocumentFragment) & { indexOfRefs?: Record<string, HTMLElement> }, forceQuery?: boolean) {
 	if (!forceQuery && doc.indexOfRefs && doc.indexOfRefs[ref]) {
 		return doc.indexOfRefs[ref];
 	} else {
-		return doc.querySelector(`[data-ref='${ref}']`);
+		return doc.querySelector<HTMLElement>(`[data-ref='${ref}']`);
 	}
 }
 
-export function validNode(node) {
+export function validNode(node: Node): node is Text | HTMLElement {
 	if (isText(node)) {
 		return true;
 	}
 
-	if (isElement(node) && node.dataset.ref) {
+	if (isHTMLElement(node) && node.dataset.ref) {
 		return true;
 	}
 
 	return false;
 }
 
-export function prevValidNode(node) {
+export function prevValidNode(node: Node) {
 	while (!validNode(node)) {
 		if (node.previousSibling) {
 			node = node.previousSibling;
@@ -810,10 +753,10 @@ export function prevValidNode(node) {
 		}
 	}
 
-	return node;
+	return node as Text | HTMLElement | null;
 }
 
-export function nextValidNode(node) {
+export function nextValidNode(node: Node) {
 	while (!validNode(node)) {
 		if (node.nextSibling) {
 			node = node.nextSibling;
@@ -826,34 +769,34 @@ export function nextValidNode(node) {
 		}
 	}
 
-	return node;
+	return node as Text | HTMLElement | null;
 }
 
 
-export function indexOf(node) {
-	let parent = node.parentNode;
+export function indexOf(node: Node) {
+	const parent = node.parentNode;
 	if (!parent) {
 		return 0;
 	}
 	return Array.prototype.indexOf.call(parent.childNodes, node);
 }
 
-export function child(node, index) {
+export function child(node: Node, index: number) {
 	return node.childNodes[index];
 }
 
-export function isVisible(node) {
+export function isVisible(node: Node) {
 	if (isElement(node) && window.getComputedStyle(node).display !== "none") {
 		return true;
 	} else if (isText(node) &&
 			hasTextContent(node) &&
-			window.getComputedStyle(node.parentNode).display !== "none") {
+			window.getComputedStyle(node.parentNode as Element).display !== "none") {
 		return true;
 	}
 	return false;
 }
 
-export function hasContent(node) {
+export function hasContent(node: Node) {
 	if (isElement(node)) {
 		return true;
 	} else if (isText(node) &&
@@ -863,23 +806,20 @@ export function hasContent(node) {
 	return false;
 }
 
-export function hasTextContent(node) {
+export function hasTextContent(node: Node) {
 	if (isElement(node)) {
-		let child;
-		for (var i = 0; i < node.childNodes.length; i++) {
-			child = node.childNodes[i];
-			if (child && isText(child) && child.textContent.trim().length) {
+		for (const child of node.childNodes) {
+			if (isText(child) && child.textContent.trim().length) {
 				return true;
 			}
 		}
-	} else if (isText(node) &&
-			node.textContent.trim().length) {
+	} else if (isText(node) && node.textContent.trim().length) {
 		return true;
 	}
 	return false;
 }
 
-export function indexOfTextNode(node, parent, hyphen) {
+export function indexOfTextNode(node: Node, parent: HTMLElement | DocumentFragment, hyphen: string) {
 	if (!isText(node)) {
 		return -1;
 	}
@@ -887,21 +827,20 @@ export function indexOfTextNode(node, parent, hyphen) {
 	// Use previous element's dataref to match if possible. Matching the text
 	// will potentially return the wrong node.
 	if (node.previousSibling) {
-		let matchingNode = parent.querySelector(`[data-ref='${node.previousSibling.dataset.ref}']`);
+		const matchingNode = parent.querySelector(`[data-ref='${(node.previousSibling as HTMLElement).dataset.ref}']`);
 		return Array.prototype.indexOf.call(parent.childNodes, matchingNode) + 1;
 	}
 
 	let nodeTextContent = node.textContent;
 	// Remove hyphenation if necessary.
-	if (nodeTextContent.substring(nodeTextContent.length - hyphen.length) == hyphen) {
+	if (nodeTextContent.substring(nodeTextContent.length - hyphen.length) === hyphen) {
 		nodeTextContent = nodeTextContent.substring(0, nodeTextContent.length - hyphen.length);
 	}
-	let child;
 	let index = -1;
-	for (var i = 0; i < parent.childNodes.length; i++) {
-		child = parent.childNodes[i];
-		if (child.nodeType === 3) {
-			let text = parent.childNodes[i].textContent;
+	for (let i = 0; i < parent.childNodes.length; i++) {
+		const child = parent.childNodes[i];
+		if (child.nodeType === Node.TEXT_NODE) {
+			const text = parent.childNodes[i].textContent;
 			if (text.includes(nodeTextContent)) {
 				index = i;
 				break;
@@ -928,24 +867,24 @@ export function indexOfTextNode(node, parent, hyphen) {
  * Determine if a node should be ignored by the iterator functions.
  * taken from https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model/Whitespace#Whitespace_helper_functions
  *
- * @param {Node} node An object implementing the DOM1 |Node| interface.
- * @return {boolean} true if the node is:
+ * @param node An object implementing the DOM1 |Node| interface.
+ * @return true if the node is:
  *  1) A |Text| node that is all whitespace
  *  2) A |Comment| node
  *  and otherwise false.
  */
-export function isIgnorable(node) {
-	return (node.nodeType === 8) || // A comment node
-		((node.nodeType === 3) && isAllWhitespace(node)); // a text node, all whitespace
+export function isIgnorable(node: Node) {
+	return (node.nodeType === Node.COMMENT_NODE) ||
+		((node.nodeType === Node.TEXT_NODE) && isAllWhitespace(node));
 }
 
 /**
  * Determine whether a node's text content is entirely whitespace.
  *
- * @param {Node} node  A node implementing the |CharacterData| interface (i.e., a |Text|, |Comment|, or |CDATASection| node
- * @return {boolean} true if all of the text content of |nod| is whitespace, otherwise false.
+ * @param node  A node implementing the |CharacterData| interface (i.e., a |Text|, |Comment|, or |CDATASection| node
+ * @return true if all of the text content of |nod| is whitespace, otherwise false.
  */
-export function isAllWhitespace(node) {
+export function isAllWhitespace(node: Node) {
 	return !(/[^\t\n\r ]/.test(node.textContent));
 }
 
@@ -956,20 +895,20 @@ export function isAllWhitespace(node) {
  * a child of the same parent, that occurs immediately before the
  * reference node.)
  *
- * @param {ChildNode} sib  The reference node.
- * @return {Node|null} Either:
+ * @param sib  The reference node.
+ * @return Either:
  *  1) The closest previous sibling to |sib| that is not ignorable according to |is_ignorable|, or
  *  2) null if no such node exists.
  */
-export function previousSignificantNode(sib) {
+export function previousSignificantNode(sib: Node): Node | null {
 	while ((sib = sib.previousSibling)) {
 		if (!isIgnorable(sib)) return sib;
 	}
 	return null;
 }
 
-function getNodeWithNamedPage(node, limiter) {
-	if (node && node.dataset && node.dataset.page) {
+function getNodeWithNamedPage(node: Node, limiter?: Node) {
+	if (isHTMLElement(node) && node.dataset.page) {
 		return node;
 	}
 	if (node.parentNode) {
@@ -977,7 +916,7 @@ function getNodeWithNamedPage(node, limiter) {
 			if (limiter && node === limiter) {
 				return;
 			}
-			if (node.dataset && node.dataset.page) {
+			if (isHTMLElement(node) && node.dataset.page) {
 				return node;
 			}
 		}
@@ -985,9 +924,9 @@ function getNodeWithNamedPage(node, limiter) {
 	return null;
 }
 
-export function breakInsideAvoidParentNode(node) {
+export function breakInsideAvoidParentNode(node: Node) {
 	while ((node = node.parentNode)) {
-		if (node && node.dataset && node.dataset.breakInside === "avoid") {
+		if (isHTMLElement(node) && node.dataset.breakInside === "avoid") {
 			return node;
 		}
 	}
@@ -996,21 +935,21 @@ export function breakInsideAvoidParentNode(node) {
 
 /**
  * Find a parent with a given node name.
- * @param {Node} node - initial Node
- * @param {string} nodeName - node name (eg. "TD", "TABLE", "STRONG"...)
- * @param {Node} limiter - go up to the parent until there's no more parent or the current node is equals to the limiter
- * @returns {Node|undefined} - Either:
+ * @param node - initial Node
+ * @param nodeName - node name (eg. "TD", "TABLE", "STRONG"...)
+ * @param limiter - go up to the parent until there's no more parent or the current node is equals to the limiter
+ * @returns Either:
  *  1) The closest parent for a the given node name, or
  *  2) undefined if no such node exists.
  */
-export function parentOf(node, nodeName, limiter) {
+export function parentOf(node: Node, nodeName: string, limiter: Node): Node | undefined {
 	if (limiter && node === limiter) {
 		return;
 	}
 	if (node.parentNode) {
 		while ((node = node.parentNode)) {
 			if (limiter && node === limiter) {
-				return;
+				return undefined;
 			}
 			if (node.nodeName === nodeName) {
 				return node;
@@ -1023,31 +962,28 @@ export function parentOf(node, nodeName, limiter) {
  * Version of |nextSibling| that skips nodes that are entirely
  * whitespace or comments.
  *
- * @param {ChildNode} sib  The reference node.
- * @return {Node|null} Either:
+ * @param sib - The reference node.
+ * @return Either:
  *  1) The closest next sibling to |sib| that is not ignorable according to |is_ignorable|, or
  *  2) null if no such node exists.
  */
-export function nextSignificantNode(sib) {
+export function nextSignificantNode(sib: Node): Node | null {
 	while ((sib = sib.nextSibling)) {
 		if (!isIgnorable(sib)) return sib;
 	}
 	return null;
 }
 
-export function filterTree(content, func, what) {
+export function filterTree(content: Node, func?: (node: Node) => number, what?: number) {
 	const treeWalker = document.createTreeWalker(
 		content || this.dom,
-		what || NodeFilter.SHOW_ALL,
+		what ?? NodeFilter.SHOW_ALL,
 		func ? { acceptNode: func } : null,
-		false
 	);
 
-	let node;
-	let current;
-	node = treeWalker.nextNode();
+	let node = treeWalker.nextNode();
 	while(node) {
-		current = node;
+		const current = node;
 		node = treeWalker.nextNode();
 		current.parentNode.removeChild(current);
 	}

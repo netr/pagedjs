@@ -1,7 +1,7 @@
 import Handler from "../handler.js";
 import csstree from "css-tree";
 import { calculateSpecificity } from "clear-cut";
-import { cleanSelector } from "../../utils/css.js";
+import { cleanSelector } from "../../utils/css";
 
 class UndisplayedFilter extends Handler {
 	constructor(chunker, polisher, caller) {

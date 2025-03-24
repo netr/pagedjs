@@ -1,5 +1,5 @@
 import Handler from "../handler.js";
-import { isContainer, isElement, isText, walk } from "../../utils/dom.js";
+import { isContainer, isElement, isText, walk } from "../../utils/dom";
 import Layout from "../../chunker/layout";
 import csstree from "css-tree";
 

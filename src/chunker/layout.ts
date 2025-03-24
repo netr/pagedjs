@@ -23,7 +23,7 @@ import {
 	validNode,
 	walk,
 	words
-} from "../utils/dom.js";
+} from "../utils/dom";
 import BreakToken from "./breaktoken";
 import RenderResult from "./renderresult";
 import EventEmitter from "event-emitter";

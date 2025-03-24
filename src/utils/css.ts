@@ -1,4 +1,4 @@
-export function cleanPseudoContent(el, trim = "\"' ") {
+export function cleanPseudoContent(el: string | null, trim = "\"' ") {
 	if(el == null) return;
 	return el
 		.replace(new RegExp(`^[${trim}]+`), "")
@@ -6,12 +6,10 @@ export function cleanPseudoContent(el, trim = "\"' ") {
 		.replace(/["']/g, match => {
 			return "\\" + match;
 		})
-		.replace(/[\n]/g, match => {
-			return "\\00000A";
-		});
+		.replace(/[\n]/g, "\\00000A");
 }
 
-export function cleanSelector(el) {
+export function cleanSelector(el: string | null) {
 	if(el == null) return;
 	return el
 		.replace(new RegExp("::footnote-call", "g"), "")

@@ -1,6 +1,6 @@
 import Handler from "../handler.js";
 import csstree from "css-tree";
-import { cleanPseudoContent } from "../../utils/css.js";
+import { cleanPseudoContent } from "../../utils/css";
 
 class StringSets extends Handler {
 	constructor(chunker, polisher, caller) {
@@ -12,7 +12,7 @@ class StringSets extends Handler {
 		this.pageLastString;
 
 	}
-	
+
 	onDeclaration(declaration, dItem, dList, rule) {
 		if (declaration.property === "string-set") {
 			let selector = csstree.generate(rule.ruleNode.prelude);
@@ -57,7 +57,7 @@ class StringSets extends Handler {
 			funcNode.name = "var";
 			funcNode.children = new csstree.List();
 
- 
+
 			if(this.type === "first" || this.type === "last" || this.type === "start" || this.type === "first-except"){
 				funcNode.children.append(
 					funcNode.children.createItem({
@@ -80,15 +80,15 @@ class StringSets extends Handler {
 
 	afterPageLayout(fragment) {
 
-	
+
 		if ( this.pageLastString === undefined )
 		{
 			this.pageLastString = {};
 		}
 
-		
+
 		for (let name of Object.keys(this.stringSetSelectors)) {
-	
+
 			let set = this.stringSetSelectors[name];
 			let value = set.value;
 			let func = set.func;
@@ -117,10 +117,10 @@ class StringSets extends Handler {
 						this.pageLastString[name] = selected[selected.length - 1].getAttribute(value) || "";
 					}
 
-				});	
+				});
 
 				/* FIRST */
-	
+
 				if (func === "content") {
 					varFirst = selected[0].textContent;
 				}
@@ -143,7 +143,7 @@ class StringSets extends Handler {
 
 				/* START */
 
-				// Hack to find if the sel. is the first elem of the page / find a better way 
+				// Hack to find if the sel. is the first elem of the page / find a better way
 				let selTop = selected[0].getBoundingClientRect().top;
 				let pageContent = selected[0].closest(".pagedjs_page_content");
 				let pageContentTop = pageContent.getBoundingClientRect().top;
@@ -157,18 +157,18 @@ class StringSets extends Handler {
 				/* FIRST EXCEPT */
 
 				varFirstExcept = "";
-				
+
 			}
 
 			fragment.style.setProperty(`--pagedjs-string-first-${name}`, `"${cleanPseudoContent(varFirst)}"`);
 			fragment.style.setProperty(`--pagedjs-string-last-${name}`, `"${cleanPseudoContent(varLast)}"`);
 			fragment.style.setProperty(`--pagedjs-string-start-${name}`, `"${cleanPseudoContent(varStart)}"`);
 			fragment.style.setProperty(`--pagedjs-string-first-except-${name}`, `"${cleanPseudoContent(varFirstExcept)}"`);
-			
-	
+
+
 		}
 	}
-	
+
 
 }
 

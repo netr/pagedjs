@@ -1,5 +1,5 @@
 import Handler from "../handler.js";
-import {filterTree} from "../../utils/dom.js";
+import {filterTree} from "../../utils/dom";
 
 class CommentsFilter extends Handler {
 	constructor(chunker, polisher, caller) {
