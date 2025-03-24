@@ -7,4 +7,11 @@ export default {
 	transform: {
 		"\\.js$": ["babel-jest", { configFile: "./babel-jest.config.json" }]
 	},
+	transformIgnorePatterns: [
+		// TODO: babel is inserting require functions into ES modules.
+		"specs/jest_helpers/(setup|teardown|puppeteer_environment)\\.js$",
+		// TODO: Why does playwright's serialize function end up with an undefined used of _typeof2?
+		// Seems to be something that's in babel's runtime library.
+		"node_modules/playwright-core/.*",
+	],
 };
