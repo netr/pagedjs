@@ -1,5 +1,5 @@
 import Handler from "../handler.js";
-import { UUID, attr, querySelectorEscape } from "../../utils/utils.js";
+import { UUID, attr, querySelectorEscape } from "../../utils/utils";
 import { cleanPseudoContent } from "../../utils/css";
 import csstree from "css-tree";
 // import { nodeAfter } from "../../utils/dom";

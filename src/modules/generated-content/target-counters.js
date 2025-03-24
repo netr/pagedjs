@@ -1,5 +1,5 @@
 import Handler from "../handler.js";
-import {attr, querySelectorEscape, UUID} from "../../utils/utils.js";
+import {attr, querySelectorEscape, UUID} from "../../utils/utils";
 import csstree from "css-tree";
 
 class TargetCounters extends Handler {

@@ -1,4 +1,4 @@
-import { getBoundingClientRect } from "./utils.js";
+import { getBoundingClientRect } from "./utils";
 
 export function isElement(node: Node | undefined | null): node is Element {
 	return node && node.nodeType === Node.ELEMENT_NODE;

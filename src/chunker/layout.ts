@@ -1,4 +1,4 @@
-import { getBoundingClientRect } from "../utils/utils.js";
+import { getBoundingClientRect } from "../utils/utils";
 import {
 	child,
 	cloneNode,

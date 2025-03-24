@@ -1,4 +1,4 @@
-import { defer } from "./utils.js";
+import { defer } from "./utils";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type QueueTask<Args extends any[], Result = void, Context = any> = (this: Context, ...args: Args) => Result | Promise<Result>;
@@ -7,7 +7,7 @@ type QueueTask<Args extends any[], Result = void, Context = any> = (this: Contex
 type QueuedItem<Args extends any[], Result = void, Context = any> = {
 	task: QueueTask<Args, Result, Context>;
 	args: Args;
-	deferred: defer;
+	deferred: defer<Result>;
 	promise: Promise<Result>;
 } | {
 	promise: Promise<Result>;
@@ -23,7 +23,7 @@ class Queue<Args extends any[], Result = void, Context = any> {
 	private _q: QueuedItem<Args, Result, Context>[] = [];
 	private running: Promise<Result> | boolean | undefined = false;
 	private paused = false;
-	private defered?: defer;
+	private defered?: defer<Result | undefined>;
 
 	public constructor(private readonly context: Context) {}
 
@@ -38,7 +38,7 @@ class Queue<Args extends any[], Result = void, Context = any> {
 
 		if (typeof task === "function") {
 
-			const deferred = new defer();
+			const deferred = new defer<ThisResult>();
 
 			queued = {
 				task: task,
@@ -104,7 +104,7 @@ class Queue<Args extends any[], Result = void, Context = any> {
 	 * Run all tasks sequentially, at convince
 	 * @return all run
 	 */
-	private run() {
+	private run(): Promise<Result | undefined> {
 
 		if (!this.running){
 			this.running = true;
@@ -118,7 +118,7 @@ class Queue<Args extends any[], Result = void, Context = any> {
 				this.dequeue().then(() => this.run());
 
 			} else {
-				this.defered.resolve();
+				this.defered.resolve(undefined);
 				this.running = undefined;
 			}
 

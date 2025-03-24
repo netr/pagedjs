@@ -15,7 +15,7 @@ import type {
 	Value,
 	Url,
 } from "css-tree";
-import { UUID } from "../utils/utils.js";
+import { UUID } from "../utils/utils";
 import Hook from "../utils/hook";
 
 export interface RuleContext {
