@@ -6,7 +6,7 @@ import {
 	registeredHandlers,
 	registerHandlers,
 	initializeHandlers
-} from "./utils/handlers.js";
+} from "./utils/handlers";
 
 export {
 	Chunker,

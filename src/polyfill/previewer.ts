@@ -6,8 +6,8 @@ import Chunker from "../chunker/chunker";
 import type { ChunkerOptions } from "../chunker/chunker";
 import Polisher from "../polisher/polisher";
 
-import { initializeHandlers, registerHandlers } from "../utils/handlers.js";
-import type { Handlers } from "../utils/handlers.js";
+import { initializeHandlers, registerHandlers } from "../utils/handlers";
+import type { Handlers } from "../utils/handlers";
 
 export type PreviewerHooks = Record<
 	"beforePreview" |
