@@ -5,7 +5,7 @@ import ContentParser from "./parser";
 import EventEmitter from "event-emitter";
 import type { Emitter } from "event-emitter";
 import Hook from "../utils/hook";
-import Queue from "../utils/queue.js";
+import Queue from "../utils/queue";
 
 const MAX_PAGES = null;
 const MAX_LAYOUTS = false;
@@ -124,7 +124,7 @@ class Chunker {
 	};
 	private pageTemplate?: HTMLTemplateElement;
 	private total = 0;
-	private readonly q = new Queue(this);
+	private readonly q = new Queue<[], (IteratorResult<BreakToken | false> & { canceled?: boolean }) | void>(this);
 	private stopped = false;
 	private rendered = false;
 	private readonly modifiedRules: Record<string, Record<string, CSSStyleRule[]>> = {};
@@ -280,7 +280,7 @@ class Chunker {
 
 		let loops = 0;
 		while (!done) {
-			result = await this.q.enqueue(() => { return this.renderAsync(renderer); });
+			result = await this.q.enqueue(() => this.renderAsync(renderer));
 			done = result.done;
 			if(MAX_LAYOUTS) {
 				loops += 1;
@@ -305,11 +305,11 @@ class Chunker {
 
 	private async renderAsync(renderer: AsyncIterator<BreakToken | false>) {
 		if (this.stopped) {
-			return { done: true, canceled: true };
+			return { done: true, value: undefined, canceled: true };
 		}
 		const result = await renderer.next();
 		if (this.stopped) {
-			return { done: true, canceled: true };
+			return { done: true, value: undefined, canceled: true };
 		} else {
 			return result;
 		}
