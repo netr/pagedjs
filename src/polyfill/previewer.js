@@ -2,7 +2,7 @@ import EventEmitter from "event-emitter";
 
 import Hook from "../utils/hook.js";
 import Chunker from "../chunker/chunker.js";
-import Polisher from "../polisher/polisher.js";
+import Polisher from "../polisher/polisher";
 
 import { initializeHandlers, registerHandlers } from "../utils/handlers.js";
 

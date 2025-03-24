@@ -3,12 +3,35 @@ import baseStyles from "./base.js";
 import Hook from "../utils/hook.js";
 import request from "../utils/request.js";
 
-class Polisher {
-	constructor(setup) {
-		this.sheets = [];
-		this.inserted = [];
+export type PolisherHooks = Partial<Record<
+	"onUrl" |
+	"onAtPage" |
+	"onAtMedia" |
+	"onRule" |
+	"onDeclaration" |
+	"onContent" |
+	"onSelector" |
+	"onPseudoSelector" |
+	"onImport" |
+	"beforeTreeParse" |
+	"beforeTreeWalk" |
+	"afterTreeWalk", Hook>>;
 
-		this.hooks = {};
+class Polisher {
+	private readonly inserted: Sheet[] = [];
+	private sheets: Sheet[] = [];
+	private base?: Sheet;
+	private styleEl?: HTMLStyleElement;
+	public styleSheet?: CSSStyleSheet;
+
+	// TODO: these seem unused and the type is uncertain.
+	private width?: string | number;
+	private height?: string | number;
+	private orientation?: string | number;
+
+	public readonly hooks: PolisherHooks = {};
+
+	public constructor(setup = true) {
 		this.hooks.onUrl = new Hook(this);
 		this.hooks.onAtPage = new Hook(this);
 		this.hooks.onAtMedia = new Hook(this);
@@ -24,12 +47,12 @@ class Polisher {
 		this.hooks.beforeTreeWalk = new Hook(this);
 		this.hooks.afterTreeWalk = new Hook(this);
 
-		if (setup !== false) {
+		if (setup) {
 			this.setup();
 		}
 	}
 
-	setup() {
+	public setup() {
 		this.base = this.insert(baseStyles);
 		this.styleEl = document.createElement("style");
 		document.head.appendChild(this.styleEl);
@@ -37,24 +60,26 @@ class Polisher {
 		return this.styleSheet;
 	}
 
-	async add() {
-		let fetched = [];
-		let urls = [];
+	public async add(...args: (string | Record<string, string>)[]) {
+		const fetched: Promise<string>[] = [];
+		const urls: string[] = [];
 
-		for (var i = 0; i < arguments.length; i++) {
-			let f;
+		for (const arg of args) {
+			let f: Promise<string>;
 
-			if (typeof arguments[i] === "object") {
-				for (let url in arguments[i]) {
-					let obj = arguments[i];
-					f = new Promise(function(resolve, reject) {
+			if (typeof arg === "object") {
+				for (const url in arg) {
+					f = new Promise(function(resolve) {
 						urls.push(url);
-						resolve(obj[url]);
+						resolve(arg[url]);
 					});
+					// TODO: fetched and urls must have the same cardinality, so this should happen here:
+					//
+					// fetched.push(f);
 				}
 			} else {
-				urls.push(arguments[i]);
-				f = request(arguments[i]).then((response) => {
+				urls.push(arg);
+				f = request(arg).then((response) => {
 					return response.text();
 				});
 			}
@@ -74,16 +99,16 @@ class Polisher {
 			});
 	}
 
-	async convertViaSheet(cssStr, href) {
-		let sheet = new Sheet(href, this.hooks);
+	private async convertViaSheet(cssStr: string, href: string) {
+		const sheet = new Sheet(href, this.hooks);
 		await sheet.parse(cssStr);
 
 		// Insert the imported sheets first
-		for (let url of sheet.imported) {
-			let str = await request(url).then((response) => {
+		for (const url of sheet.imported) {
+			const str = await request(url).then((response) => {
 				return response.text();
 			});
-			let text = await this.convertViaSheet(str, url);
+			const text = await this.convertViaSheet(str, url);
 			this.insert(text);
 		}
 
@@ -101,9 +126,9 @@ class Polisher {
 		return sheet.toString();
 	}
 
-	insert(text){
-		let head = document.querySelector("head");
-		let style = document.createElement("style");
+	private insert(text: string){
+		const head = document.querySelector("head");
+		const style = document.createElement("style");
 		style.setAttribute("data-pagedjs-inserted-styles", "true");
 
 		style.appendChild(document.createTextNode(text));
@@ -114,7 +139,7 @@ class Polisher {
 		return style;
 	}
 
-	destroy() {
+	public destroy() {
 		this.styleEl.remove();
 		this.inserted.forEach((s) => {
 			s.remove();
