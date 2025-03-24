@@ -1,7 +1,7 @@
 import Sheet from "./sheet";
 import type { SheetHooks } from "./sheet";
 import baseStyles from "./base";
-import Hook from "../utils/hook.js";
+import Hook from "../utils/hook";
 import request from "../utils/request.js";
 
 export type PolisherHooks = SheetHooks;

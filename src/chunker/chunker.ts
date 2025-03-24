@@ -4,7 +4,7 @@ import type { PageHooks, PageOptions } from "./page";
 import ContentParser from "./parser";
 import EventEmitter from "event-emitter";
 import type { Emitter } from "event-emitter";
-import Hook from "../utils/hook.js";
+import Hook from "../utils/hook";
 import Queue from "../utils/queue.js";
 
 const MAX_PAGES = null;
@@ -84,14 +84,15 @@ const TEMPLATE = `
 	</div>
 </div>`;
 
-export type ChunkerHooks = PageHooks & Record<
-	"beforeParsed" |
-	"filter" |
-	"afterParsed" |
-	"beforePageLayout" |
-	"afterPageLayout" |
-	"finalizePage" |
-	"afterRendered", Hook>;
+export type ChunkerHooks = PageHooks & {
+	beforeParsed: Hook<[HTMLElement | DocumentFragment | undefined, Chunker]>,
+	filter: Hook<[HTMLElement | DocumentFragment]>,
+	afterParsed: Hook<[HTMLElement | DocumentFragment, Chunker]>,
+	beforePageLayout: Hook<[Page, HTMLElement | DocumentFragment | undefined, BreakToken | undefined, Chunker]>,
+	afterPageLayout: Hook<[HTMLElement, Page, BreakToken | undefined, Chunker]>,
+	finalizePage: Hook<[HTMLElement, Page, undefined, Chunker]>,
+	afterRendered: Hook<[Page[], Chunker]>,
+};
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface ChunkerOptions extends PageOptions {}

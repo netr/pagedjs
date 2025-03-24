@@ -3,29 +3,41 @@ import type {
 	Atrule,
 	AttributeSelector,
 	CssNode,
+	Declaration,
+	FunctionNode,
 	Identifier,
 	List,
 	ListItem,
+	PseudoElementSelector,
 	Rule,
+	Selector,
 	StyleSheet,
 	Value,
+	Url,
 } from "css-tree";
 import { UUID } from "../utils/utils.js";
-import Hook from "../utils/hook.js";
+import Hook from "../utils/hook";
 
-export type SheetHooks = Record<
-	"onUrl" |
-	"onAtPage" |
-	"onAtMedia" |
-	"onRule" |
-	"onDeclaration" |
-	"onContent" |
-	"onSelector" |
-	"onPseudoSelector" |
-	"onImport" |
-	"beforeTreeParse" |
-	"beforeTreeWalk" |
-	"afterTreeWalk", Hook>;
+export interface RuleContext {
+	ruleNode: Atrule | Rule;
+	ruleItem: ListItem<CssNode>;
+	rulelist: List<CssNode>;
+}
+
+export type SheetHooks = {
+	onUrl: Hook<[Url, ListItem<CssNode>, List<CssNode>]>,
+	onAtPage: Hook<[Atrule, ListItem<CssNode>, List<CssNode>]>,
+	onAtMedia: Hook<[Atrule, ListItem<CssNode>, List<CssNode>]>,
+	onRule: Hook<[Rule, ListItem<CssNode>, List<CssNode>]>,
+	onDeclaration: Hook<[Declaration, ListItem<CssNode>, List<CssNode>, RuleContext]>,
+	onContent: Hook<[FunctionNode, ListItem<CssNode>, List<CssNode>, { declarationNode: Declaration, dItem: ListItem<CssNode>, dList: List<CssNode> }, RuleContext]>,
+	onSelector: Hook<[Selector, ListItem<CssNode>, List<CssNode>, RuleContext]>,
+	onPseudoSelector: Hook<[PseudoElementSelector, ListItem<CssNode>, List<CssNode>, { selectNode: Selector, selectItem: ListItem<CssNode>, selectList: List<CssNode> }, RuleContext]>,
+	onImport: Hook<[Atrule, ListItem<CssNode>, List<CssNode>]>,
+	beforeTreeParse: Hook<[string, Sheet]>,
+	beforeTreeWalk: Hook<[StyleSheet]>,
+	afterTreeWalk: Hook<[StyleSheet, Sheet]>,
+};
 
 class Sheet {
 	private readonly hooks: SheetHooks;

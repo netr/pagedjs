@@ -1,17 +1,19 @@
 import EventEmitter from "event-emitter";
 import type { Emitter } from "event-emitter";
 
-import Hook from "../utils/hook.js";
+import Hook from "../utils/hook";
 import Chunker from "../chunker/chunker";
 import type { ChunkerOptions } from "../chunker/chunker";
+import type Page from "../chunker/page";
 import Polisher from "../polisher/polisher";
 
 import { initializeHandlers, registerHandlers } from "../utils/handlers";
 import type { Handlers } from "../utils/handlers";
 
-export type PreviewerHooks = Record<
-	"beforePreview" |
-	"afterPreview", Hook>;
+export type PreviewerHooks = {
+	beforePreview: Hook<[HTMLElement | DocumentFragment, Element]>,
+	afterPreview: Hook<[Page[]]>,
+};
 
 export type PreviewerOptions = ChunkerOptions;
 

@@ -28,22 +28,22 @@ import BreakToken from "./breaktoken";
 import RenderResult from "./renderresult";
 import EventEmitter from "event-emitter";
 import type { Emitter } from "event-emitter";
-import Hook from "../utils/hook.js";
+import Hook from "../utils/hook";
 import Overflow from "./overflow";
 
 const MAX_CHARS_PER_BREAK = 1500;
 
-export type LayoutHooks = Record<
-	"onPageLayout" |
-	"layout" |
-	"renderNode" |
-	"layoutNode" |
-	"beforeOverflow" |
-	"onOverflow" |
-	"afterOverflowRemoved" |
-	"afterOverflowAdded" |
-	"onBreakToken" |
-	"beforeRenderResult", Hook>;
+export type LayoutHooks = {
+	onPageLayout: Hook<[HTMLDivElement, BreakToken, Layout]>,
+	layout: Hook<[HTMLDivElement, Layout]>,
+	renderNode: Hook<[Text | HTMLElement, Text | HTMLElement, Layout]>,
+	layoutNode: Hook<[Node]>,
+	onOverflow: Hook<[Range, HTMLElement, DOMRect, Layout]>,
+	afterOverflowRemoved: Hook<[HTMLElement | DocumentFragment, HTMLElement, Layout]>,
+	afterOverflowAdded: Hook<[HTMLElement]>,
+	onBreakToken: Hook<[BreakToken, Range | undefined, Node, Layout], BreakToken | undefined>,
+	beforeRenderResult: Hook<[BreakToken, HTMLDivElement, Layout]>,
+};
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface LayoutOptions {
