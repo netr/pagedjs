@@ -1,6 +1,6 @@
 import Handler from "../handler.js";
 import csstree from "css-tree";
-import pageSizes from "../../polisher/sizes.js";
+import pageSizes from "../../polisher/sizes";
 import { findElement, rebuildAncestors } from "../../utils/dom.js";
 import { CSSValueToString } from "../../utils/utils.js";
 

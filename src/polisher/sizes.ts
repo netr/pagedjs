@@ -1,5 +1,15 @@
 // https://www.w3.org/TR/css3-page/#page-size-prop
 
+export interface Dimension {
+	value: number;
+	unit: "mm" | "cm" | "Q" | "in" | "pc" | "pt" | "px";
+}
+
+export interface NamedPageSize {
+	width: Dimension;
+	height: Dimension;
+}
+
 export default {
 	"A0": {
 		width: {
@@ -161,4 +171,4 @@ export default {
 			unit: "in"
 		}
 	}
-};
+} satisfies Record<string, NamedPageSize>;

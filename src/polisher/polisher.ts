@@ -1,6 +1,6 @@
 import Sheet from "./sheet";
 import type { SheetHooks } from "./sheet";
-import baseStyles from "./base.js";
+import baseStyles from "./base";
 import Hook from "../utils/hook.js";
 import request from "../utils/request.js";
 
