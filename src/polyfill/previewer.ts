@@ -1,40 +1,59 @@
 import EventEmitter from "event-emitter";
+import type { Emitter } from "event-emitter";
 
 import Hook from "../utils/hook.js";
-import Chunker from "../chunker/chunker.js";
+import Chunker from "../chunker/chunker";
+import type { ChunkerOptions } from "../chunker/chunker";
 import Polisher from "../polisher/polisher";
 
 import { initializeHandlers, registerHandlers } from "../utils/handlers.js";
+import type { Handlers } from "../utils/handlers.js";
 
+export type PreviewerHooks = Record<
+	"beforePreview" |
+	"afterPreview", Hook>;
+
+export type PreviewerOptions = ChunkerOptions;
+
+// TODO: injecting data into another class should be avoided.
+export interface PreviewChunker extends Chunker {
+	performance?: number;
+	size?: Previewer["size"];
+}
+
+// Due to EventEmitter:
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 class Previewer {
-	constructor(options) {
-		// this.preview = this.getParams("preview") !== "false";
+	// Process styles
+	private readonly polisher = new Polisher(false);
+	private readonly chunker: PreviewChunker;
+	private size = {
+		width: {
+			value: 8.5,
+			unit: "in"
+		},
+		height: {
+			value: 11,
+			unit: "in"
+		},
+		format: undefined,
+		orientation: undefined
+	};
+	private handlers?: Handlers;
+	// TODO: this class should probably not make assumptions about the at-pages module.
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	private atpages?: Record<string, any>;
 
-		this.settings = options || {};
+	public readonly hooks: PreviewerHooks;
 
-		// Process styles
-		this.polisher = new Polisher(false);
-
+	public constructor(private readonly settings: PreviewerOptions = {}) {
 		// Chunk contents
 		this.chunker = new Chunker(undefined, undefined, this.settings);
 
 		// Hooks
-		this.hooks = {};
-		this.hooks.beforePreview = new Hook(this);
-		this.hooks.afterPreview = new Hook(this);
-
-		// default size
-		this.size = {
-			width: {
-				value: 8.5,
-				unit: "in"
-			},
-			height: {
-				value: 11,
-				unit: "in"
-			},
-			format: undefined,
-			orientation: undefined
+		this.hooks = {
+			beforePreview: new Hook(this),
+			afterPreview: new Hook(this),
 		};
 
 		this.chunker.on("page", (page) => {
@@ -46,8 +65,8 @@ class Previewer {
 		});
 	}
 
-	initializeHandlers() {
-		let handlers = initializeHandlers(this.chunker, this.polisher, this);
+	private initializeHandlers() {
+		const handlers = initializeHandlers(this.chunker, this.polisher, this);
 
 		handlers.on("size", (size) => {
 			this.size = size;
@@ -62,30 +81,30 @@ class Previewer {
 		return handlers;
 	}
 
-	registerHandlers() {
-		return registerHandlers.apply(registerHandlers, arguments);
+	private registerHandlers(...args: Parameters<typeof registerHandlers>[0][]) {
+		return registerHandlers(...args);
 	}
 
-	getParams(name) {
-		let param;
-		let url = new URL(window.location);
-		let params = new URLSearchParams(url.search);
-		for(var pair of params.entries()) {
-			if(pair[0] === name) {
-				param = pair[1];
+	private getParams(name: string) {
+		let param: string | undefined;
+		// TODO: this used to be window.location, but URL takes a string.
+		const url = new URL(window.location.href);
+		const params = new URLSearchParams(url.search);
+		for(const [k, v] of params.entries()) {
+			if(k === name) {
+				param = v;
 			}
 		}
 
 		return param;
 	}
 
-	wrapContent() {
+	private wrapContent() {
 		// Wrap body in template tag
-		let body = document.querySelector("body");
+		const body = document.querySelector<HTMLBodyElement>("body");
 
 		// Check if a template exists
-		let template;
-		template = body.querySelector(":scope > template[data-ref='pagedjs-content']");
+		let template = body.querySelector<HTMLTemplateElement>(":scope > template[data-ref='pagedjs-content']");
 
 		if (!template) {
 			// Otherwise create one
@@ -99,7 +118,7 @@ class Previewer {
 		return template.content;
 	}
 
-	removeStyles(doc=document) {
+	private removeStyles(doc = document): (string | Record<string, string>)[] {
 		// Get all stylesheets
 		const stylesheets = Array.from(doc.querySelectorAll("link[rel='stylesheet']:not([data-pagedjs-ignore], [media~='screen'])"));
 		// Get inline styles
@@ -126,14 +145,14 @@ class Previewer {
 				}
 				if (element.nodeName === "LINK") {
 					element.remove();
-					return element.href;
+					return (element as HTMLLinkElement).href;
 				}
 				// ignore
 				console.warn(`Unable to process: ${element}, ignoring.`);
 			});
 	}
 
-	async preview(content, stylesheets, renderTo) {
+	public async preview(content: HTMLElement | DocumentFragment, stylesheets: (string | Record<string, string>)[], renderTo: Element) {
 
 		await this.hooks.beforePreview.trigger(content, renderTo);
 
@@ -151,12 +170,12 @@ class Previewer {
 
 		await this.polisher.add(...stylesheets);
 
-		let startTime = performance.now();
+		const startTime = performance.now();
 
 		// Render flow
-		let flow = await this.chunker.flow(content, renderTo);
+		const flow = await this.chunker.flow(content, renderTo);
 
-		let endTime = performance.now();
+		const endTime = performance.now();
 
 		flow.performance = (endTime - startTime);
 		flow.size = this.size;
@@ -168,6 +187,9 @@ class Previewer {
 		return flow;
 	}
 }
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging
+declare interface Previewer extends Emitter {}
 
 EventEmitter(Previewer.prototype);
 

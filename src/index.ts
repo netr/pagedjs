@@ -1,6 +1,6 @@
 import Chunker from "./chunker/chunker";
 import Polisher from "./polisher/polisher";
-import Previewer from "./polyfill/previewer.js";
+import Previewer from "./polyfill/previewer";
 import Handler from "./modules/handler.js";
 import {
 	registeredHandlers,
