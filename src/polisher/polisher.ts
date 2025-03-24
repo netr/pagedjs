@@ -1,26 +1,15 @@
-import Sheet from "./sheet.js";
+import Sheet from "./sheet";
+import type { SheetHooks } from "./sheet";
 import baseStyles from "./base.js";
 import Hook from "../utils/hook.js";
 import request from "../utils/request.js";
 
-export type PolisherHooks = Partial<Record<
-	"onUrl" |
-	"onAtPage" |
-	"onAtMedia" |
-	"onRule" |
-	"onDeclaration" |
-	"onContent" |
-	"onSelector" |
-	"onPseudoSelector" |
-	"onImport" |
-	"beforeTreeParse" |
-	"beforeTreeWalk" |
-	"afterTreeWalk", Hook>>;
+export type PolisherHooks = SheetHooks;
 
 class Polisher {
-	private readonly inserted: Sheet[] = [];
+	private readonly inserted: HTMLStyleElement[] = [];
 	private sheets: Sheet[] = [];
-	private base?: Sheet;
+	private base?: HTMLStyleElement;
 	private styleEl?: HTMLStyleElement;
 	public styleSheet?: CSSStyleSheet;
 
@@ -29,24 +18,24 @@ class Polisher {
 	private height?: string | number;
 	private orientation?: string | number;
 
-	public readonly hooks: PolisherHooks = {};
+	public readonly hooks: PolisherHooks = {
+		onUrl: new Hook(this),
+		onAtPage: new Hook(this),
+		onAtMedia: new Hook(this),
+		onRule: new Hook(this),
+		onDeclaration: new Hook(this),
+		onSelector: new Hook(this),
+		onPseudoSelector: new Hook(this),
+
+		onContent: new Hook(this),
+		onImport: new Hook(this),
+
+		beforeTreeParse: new Hook(this),
+		beforeTreeWalk: new Hook(this),
+		afterTreeWalk: new Hook(this),
+	};
 
 	public constructor(setup = true) {
-		this.hooks.onUrl = new Hook(this);
-		this.hooks.onAtPage = new Hook(this);
-		this.hooks.onAtMedia = new Hook(this);
-		this.hooks.onRule = new Hook(this);
-		this.hooks.onDeclaration = new Hook(this);
-		this.hooks.onContent = new Hook(this);
-		this.hooks.onSelector = new Hook(this);
-		this.hooks.onPseudoSelector = new Hook(this);
-
-		this.hooks.onImport = new Hook(this);
-
-		this.hooks.beforeTreeParse = new Hook(this);
-		this.hooks.beforeTreeWalk = new Hook(this);
-		this.hooks.afterTreeWalk = new Hook(this);
-
 		if (setup) {
 			this.setup();
 		}
