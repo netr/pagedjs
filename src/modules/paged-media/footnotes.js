@@ -1,4 +1,4 @@
-import Handler from "../handler.js";
+import Handler from "../handler";
 import { isContainer, isElement, isText, walk } from "../../utils/dom";
 import Layout from "../../chunker/layout";
 import csstree from "css-tree";

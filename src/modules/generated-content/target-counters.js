@@ -1,4 +1,4 @@
-import Handler from "../handler.js";
+import Handler from "../handler";
 import {attr, querySelectorEscape, UUID} from "../../utils/utils";
 import csstree from "css-tree";
 

@@ -1,4 +1,4 @@
-import Handler from "../handler.js";
+import Handler from "../handler";
 
 class Splits extends Handler {
 	constructor(chunker, polisher, caller) {

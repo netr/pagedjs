@@ -1,4 +1,4 @@
-import Handler from "../handler.js";
+import Handler from "../handler";
 import {filterTree} from "../../utils/dom";
 
 class CommentsFilter extends Handler {

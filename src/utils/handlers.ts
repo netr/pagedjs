@@ -13,8 +13,6 @@ export type AnyHook = Hook<any[], any>;
 
 export type NoHooks = {} & Record<string, AnyHook>;
 
-type NoHooks = {} & Record<string, AnyHook>;
-
 export interface HandlerCaller<Hooks extends Record<string, AnyHook>> {
 	hooks?: Hooks;
 }

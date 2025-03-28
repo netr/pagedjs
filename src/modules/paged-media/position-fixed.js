@@ -1,4 +1,4 @@
-import Handler from "../handler.js";
+import Handler from "../handler";
 import csstree from "css-tree";
 
 class PositionFixed extends Handler {
