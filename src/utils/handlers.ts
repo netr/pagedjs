@@ -1,6 +1,6 @@
 import pagedMediaHandlers from "../modules/paged-media/index.js";
 import generatedContentHandlers from "../modules/generated-content";
-import filters from "../modules/filters/index.js";
+import filters from "../modules/filters";
 import { EventEmitter } from "./event-emitter";
 import type { EventMapBase } from "./event-emitter";
 import { pipe } from "./event-emitter-pipe";

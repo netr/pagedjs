@@ -1,25 +1,22 @@
 import Handler from "../handler";
+import type { HooksInterface } from "../handler";
+import type Chunker from "../../chunker/chunker";
+import type Polisher from "../../polisher/polisher";
 import {isElement, isIgnorable, nextSignificantNode, previousSignificantNode, filterTree} from "../../utils/dom";
 
-class WhiteSpaceFilter extends Handler {
-	constructor(chunker, polisher, caller) {
-		super(chunker, polisher, caller);
-	}
+class WhiteSpaceFilter extends Handler implements HooksInterface<Chunker["hooks"] & Polisher["hooks"]> {
+	filter(content: HTMLElement | DocumentFragment) {
 
-	filter(content) {
-
-		filterTree(content, (node) => {
-			return this.filterEmpty(node);
-		}, NodeFilter.SHOW_TEXT);
+		filterTree(content, (node) => this.filterEmpty(node), NodeFilter.SHOW_TEXT);
 
 	}
 
-	filterEmpty(node) {
+	private filterEmpty(node: Node) {
 		if (node.textContent.length > 1 && isIgnorable(node)) {
 
 			// Do not touch the content if text is pre-formatted
-			let parent = node.parentNode;
-			let pre = isElement(parent) && parent.closest("pre");
+			const parent = node.parentNode;
+			const pre = isElement(parent) && parent.closest("pre");
 			if (pre) {
 				return NodeFilter.FILTER_REJECT;
 			}
