@@ -4,6 +4,10 @@ import { EventEmitter } from "../utils/event-emitter";
 import type { EventMapBase } from "../utils/event-emitter";
 import type { AnyHook, HandlerCaller, NoHooks } from "../utils/handlers";
 
+export type HooksInterface<Hooks extends Record<string, AnyHook>> = {
+	[K in keyof Hooks]?: Parameters<Hooks[K]["register"]>[0]
+};
+
 class Handler<EventMap extends EventMapBase = {} & EventMapBase, Hooks extends Record<string, AnyHook> = NoHooks> extends EventEmitter<EventMap> {
 	public constructor(
 		private readonly chunker: Chunker,

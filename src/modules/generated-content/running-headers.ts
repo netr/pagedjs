@@ -1,25 +1,44 @@
-import Handler from "../handler";
 import csstree from "css-tree";
 
-class RunningHeaders extends Handler {
-	constructor(chunker, polisher, caller) {
-		super(chunker, polisher, caller);
+import Handler from "../handler";
+import type { HooksInterface } from "../handler";
+import type Chunker from "../../chunker/chunker";
+import type Polisher from "../../polisher/polisher";
+import type Sheet from "../../polisher/sheet";
+import type { RuleContext } from "../../polisher/sheet";
 
-		this.runningSelectors = {};
-		this.elements = {};
-	}
+interface RunningSelector {
+	identifier: string;
+	value: string;
+	selector: string;
+	first?: HTMLElement;
+}
 
-	onDeclaration(declaration, dItem, dList, rule) {
+interface RunningElement {
+	func: string;
+	args: string[];
+	value: string;
+	style: "first"; // we only handle first for now
+	selector: string;
+	fullSelector: string;
+}
+
+class RunningHeaders extends Handler implements HooksInterface<Chunker["hooks"] & Polisher["hooks"]> {
+	private readonly runningSelectors: Record<string, RunningSelector> = {};
+	private orderedSelectors: string[] | undefined;
+	private readonly elements: Record<string, RunningElement> = {};
+
+	onDeclaration(declaration: csstree.Declaration, _dItem: csstree.ListItem<csstree.CssNode>, _dList: csstree.List<csstree.CssNode>, rule: RuleContext) {
 		if (declaration.property === "position") {
-			let selector = csstree.generate(rule.ruleNode.prelude);
-			let identifier = declaration.value.children.first().name;
+			const selector = csstree.generate(rule.ruleNode.prelude);
+			const identifier = ((declaration.value as csstree.Value).children.first() as csstree.Identifier).name;
 
 			if (identifier === "running") {
-				let value;
+				let value: string | undefined;
 				csstree.walk(declaration, {
 					visit: "Function",
-					enter: (node, item, list) => {
-						value = node.children.first().name;
+					enter: (node) => {
+						value = (node.children.first() as csstree.Identifier).name;
 					}
 				});
 
@@ -35,30 +54,27 @@ class RunningHeaders extends Handler {
 
 			csstree.walk(declaration, {
 				visit: "Function",
-				enter: (funcNode, fItem, fList) => {
+				enter: (funcNode) => {
 
 					if (funcNode.name.indexOf("element") > -1) {
 
-						let selector = csstree.generate(rule.ruleNode.prelude);
+						const selector = csstree.generate(rule.ruleNode.prelude);
 
-						let func = funcNode.name;
+						const func = funcNode.name;
 
-						let value = funcNode.children.first().name;
+						const value = (funcNode.children.first() as csstree.Identifier).name;
 
-						let args = [value];
-
-						// we only handle first for now
-						let style = "first";
+						const args = [value];
 
 						selector.split(",").forEach((s) => {
 							// remove before / after
 							s = s.replace(/::after|::before/, "");
 
 							this.elements[s] = {
-								func: func,
-								args: args,
-								value: value,
-								style: style || "first",
+								func,
+								args,
+								value,
+								style: "first",
 								selector: s,
 								fullSelector: selector
 							};
@@ -70,13 +86,13 @@ class RunningHeaders extends Handler {
 		}
 	}
 
-	afterParsed(fragment) {
-		for (let name of Object.keys(this.runningSelectors)) {
-			let set = this.runningSelectors[name];
-			let selected = Array.from(fragment.querySelectorAll(set.selector));
+	afterParsed(fragment: HTMLElement | DocumentFragment | undefined) {
+		for (const name of Object.keys(this.runningSelectors)) {
+			const set = this.runningSelectors[name];
+			const selected = Array.from(fragment.querySelectorAll<HTMLElement>(set.selector));
 
 			if (set.identifier === "running") {
-				for (let header of selected) {
+				for (const header of selected) {
 					header.style.display = "none";
 				}
 			}
@@ -84,10 +100,10 @@ class RunningHeaders extends Handler {
 		}
 	}
 
-	afterPageLayout(fragment) {
-		for (let name of Object.keys(this.runningSelectors)) {
-			let set = this.runningSelectors[name];
-			let selected = fragment.querySelector(set.selector);
+	afterPageLayout(fragment: HTMLElement) {
+		for (const name of Object.keys(this.runningSelectors)) {
+			const set = this.runningSelectors[name];
+			const selected = fragment.querySelector<HTMLElement>(set.selector);
 			if (selected) {
 				// let cssVar;
 				if (set.identifier === "running") {
@@ -106,17 +122,17 @@ class RunningHeaders extends Handler {
 			this.orderedSelectors = this.orderSelectors(this.elements);
 		}
 
-		for (let selector of this.orderedSelectors) {
+		for (const selector of this.orderedSelectors) {
 			if (selector) {
 
-				let el = this.elements[selector];
-				let selected = fragment.querySelector(selector);
+				const el = this.elements[selector];
+				const selected = fragment.querySelector<HTMLElement>(selector);
 				if (selected) {
-					let running = this.runningSelectors[el.args[0]];
+					const running = this.runningSelectors[el.args[0]];
 					if (running && running.first) {
 						selected.innerHTML = ""; // Clear node
 						// selected.classList.add("pagedjs_clear-after"); // Clear ::after
-						let clone = running.first.cloneNode(true);
+						const clone = running.first.cloneNode(true) as HTMLElement;
 						clone.style.display = null;
 						selected.appendChild(clone);
 					}
@@ -134,13 +150,13 @@ class RunningHeaders extends Handler {
 	* 5) named page
 	* 6) named left & right
 	* 7) named first & nth
-	* @param {string} [s] selector string
-	* @return {int} weight
+	* @param s selector string
+	* @return weight
 	*/
-	pageWeight(s) {
+	private pageWeight(s: string): number {
 		let weight = 1;
-		let selector = s.split(" ");
-		let parts = selector.length && selector[0].split(".");
+		const selector = s.split(" ");
+		const parts = selector.length && selector[0].split(".");
 
 		parts.shift(); // remove empty first part
 
@@ -186,12 +202,12 @@ class RunningHeaders extends Handler {
 	*
 	* Does not try to deduplicate base on specifity of the selector
 	* Previous matched selector will just be overwritten
-	* @param {obj} [obj] selectors object
-	* @return {Array} orderedSelectors
+	* @param obj selectors object
+	* @return orderedSelectors
 	*/
-	orderSelectors(obj) {
-		let selectors = Object.keys(obj);
-		let weighted = {
+	private orderSelectors(obj: Record<string, RunningElement>): string[] {
+		const selectors = Object.keys(obj);
+		const weighted = {
 			1: [],
 			2: [],
 			3: [],
@@ -201,21 +217,21 @@ class RunningHeaders extends Handler {
 			7: []
 		};
 
-		let orderedSelectors = [];
-
-		for (let s of selectors) {
-			let w = this.pageWeight(s);
+		for (const s of selectors) {
+			const w = this.pageWeight(s);
 			weighted[w].unshift(s);
 		}
 
-		for (var i = 1; i <= 7; i++) {
+		let orderedSelectors = [];
+
+		for (let i = 1; i <= 7; i++) {
 			orderedSelectors = orderedSelectors.concat(weighted[i]);
 		}
 
 		return orderedSelectors;
 	}
 
-	beforeTreeParse(text, sheet) {
+	beforeTreeParse(text: string, sheet: Sheet) {
 		// element(x) is parsed as image element selector, so update element to element-ident
 		sheet.text = text.replace(/element[\s]*\(([^|^#)]*)\)/g, "element-ident($1)");
 	}

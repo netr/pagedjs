@@ -1,27 +1,34 @@
-import Handler from "../handler";
 import csstree from "css-tree";
+
+import Handler from "../handler";
+import type { HooksInterface } from "../handler";
+import type Chunker from "../../chunker/chunker";
+import type Polisher from "../../polisher/polisher";
+import type { RuleContext } from "../../polisher/sheet";
 import { cleanPseudoContent } from "../../utils/css";
 
-class StringSets extends Handler {
-	constructor(chunker, polisher, caller) {
-		super(chunker, polisher, caller);
+interface StringSetSelector {
+	identifier: string;
+	func: string;
+	value: string;
+	selector: string;
+}
 
-		this.stringSetSelectors = {};
-		this.type;
-		// pageLastString = last string variable defined on the page
-		this.pageLastString;
+class StringSets extends Handler implements HooksInterface<Chunker["hooks"] & Polisher["hooks"]> {
+	private readonly stringSetSelectors: Record<string, StringSetSelector> = {};
+	private type: string | undefined;
+	// pageLastString = last string variable defined on the page
+	private pageLastString: Record<string, string> | undefined;
 
-	}
-
-	onDeclaration(declaration, dItem, dList, rule) {
+	onDeclaration(declaration: csstree.Declaration, dItem: csstree.ListItem<csstree.CssNode>, dList: csstree.List<csstree.CssNode>, rule: RuleContext) {
 		if (declaration.property === "string-set") {
-			let selector = csstree.generate(rule.ruleNode.prelude);
+			const selector = csstree.generate(rule.ruleNode.prelude);
 
-			let identifiers = [];
-			let functions = [];
-			let values = [];
+			const identifiers: string[] = [];
+			const functions: string[] = [];
+			const values: string[] = [];
 
-			declaration.value.children.forEach((child) => {
+			(declaration.value as csstree.Value).children.forEach((child) => {
 				if (child.type === "Identifier") {
 					identifiers.push(child.name);
 				}
@@ -36,8 +43,8 @@ class StringSets extends Handler {
 			});
 
 			identifiers.forEach((identifier, index) => {
-				let func = functions[index];
-				let value = values[index];
+				const func = functions[index];
+				const value = values[index];
 				this.stringSetSelectors[identifier] = {
 					identifier,
 					func,
@@ -49,11 +56,11 @@ class StringSets extends Handler {
 		}
 	}
 
-	onContent(funcNode, fItem, fList, declaration, rule) {
+	onContent(funcNode: csstree.FunctionNode) {
 
 		if (funcNode.name === "string") {
-			let identifier = funcNode.children && funcNode.children.first().name;
-			this.type = funcNode.children.last().name;
+			const identifier = funcNode.children && (funcNode.children.first() as csstree.Identifier).name;
+			this.type = (funcNode.children.last() as csstree.Identifier).name;
 			funcNode.name = "var";
 			funcNode.children = new csstree.List();
 
@@ -78,7 +85,7 @@ class StringSets extends Handler {
 		}
 	}
 
-	afterPageLayout(fragment) {
+	afterPageLayout(fragment: HTMLElement) {
 
 
 		if ( this.pageLastString === undefined )
@@ -87,19 +94,22 @@ class StringSets extends Handler {
 		}
 
 
-		for (let name of Object.keys(this.stringSetSelectors)) {
+		for (const name of Object.keys(this.stringSetSelectors)) {
 
-			let set = this.stringSetSelectors[name];
-			let value = set.value;
-			let func = set.func;
-			let selected = fragment.querySelectorAll(set.selector);
+			const set = this.stringSetSelectors[name];
+			const value = set.value;
+			const func = set.func;
+			const selected = fragment.querySelectorAll(set.selector);
 
 			// Get the last found string for the current identifier
-			let stringPrevPage = ( name in this.pageLastString ) ? this.pageLastString[name] : "";
+			const stringPrevPage = ( name in this.pageLastString ) ? this.pageLastString[name] : "";
 
-			let varFirst, varLast, varStart, varFirstExcept;
+			let varFirst: string | undefined;
+			let varLast: string | undefined;
+			let varStart: string | undefined;
+			let varFirstExcept: string | undefined;
 
-			if(selected.length == 0){
+			if(selected.length === 0){
 				// if there is no sel. on the page
 				varFirst = stringPrevPage;
 				varLast = stringPrevPage;
@@ -107,7 +117,8 @@ class StringSets extends Handler {
 				varFirstExcept = stringPrevPage;
 			}else{
 
-				selected.forEach((sel) => {
+				// TODO: this is not using the iteration variable. Is that right?
+				selected.forEach(() => {
 					// push each content into the array to define in the variable the first and the last element of the page.
 					if (func === "content") {
 						this.pageLastString[name] = selected[selected.length - 1].textContent;
@@ -144,11 +155,11 @@ class StringSets extends Handler {
 				/* START */
 
 				// Hack to find if the sel. is the first elem of the page / find a better way
-				let selTop = selected[0].getBoundingClientRect().top;
-				let pageContent = selected[0].closest(".pagedjs_page_content");
-				let pageContentTop = pageContent.getBoundingClientRect().top;
+				const selTop = selected[0].getBoundingClientRect().top;
+				const pageContent = selected[0].closest(".pagedjs_page_content");
+				const pageContentTop = pageContent.getBoundingClientRect().top;
 
-				if(selTop == pageContentTop){
+				if(selTop === pageContentTop){
 					varStart = varFirst;
 				}else{
 					varStart = stringPrevPage;

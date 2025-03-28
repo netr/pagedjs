@@ -1,30 +1,50 @@
-import Handler from "../handler";
-import { UUID, attr, querySelectorEscape } from "../../utils/utils";
-import { cleanPseudoContent } from "../../utils/css";
 import csstree from "css-tree";
-// import { nodeAfter } from "../../utils/dom";
 
-class TargetText extends Handler {
-	constructor(chunker, polisher, caller) {
+import Handler from "../handler";
+import type { HooksInterface } from "../handler";
+import type Chunker from "../../chunker/chunker";
+import type Polisher from "../../polisher/polisher";
+import type { RuleContext } from "../../polisher/sheet";
+import { cleanPseudoContent } from "../../utils/css";
+import type { HandlerCaller, NoHooks } from "../../utils/handlers";
+import { UUID, attr, querySelectorEscape } from "../../utils/utils";
+
+interface TextTarget {
+	func: string;
+	args: string[];
+	value: string;
+	style: string;
+	selector: string;
+	fullSelector: string;
+	variable: string;
+}
+
+class TargetText extends Handler implements HooksInterface<Chunker["hooks"] & Polisher["hooks"]> {
+	private readonly styleSheet: CSSStyleSheet;
+	private readonly textTargets: Record<string, TextTarget> = {};
+	private beforeContent = "";
+	private afterContent = "";
+	// TODO: this was initialized with {}, though it's used as a string.
+	private selector = "";
+
+	public constructor(chunker: Chunker, polisher: Polisher, caller: HandlerCaller<NoHooks>) {
 		super(chunker, polisher, caller);
 
 		this.styleSheet = polisher.styleSheet;
-		this.textTargets = {};
-		this.beforeContent = "";
-		this.afterContent = "";
-		this.selector = {};
 	}
 
-	onContent(funcNode, fItem, fList, declaration, rule) {
+	onContent(funcNode: csstree.FunctionNode, _fItem: csstree.ListItem<csstree.CssNode>, _fList: csstree.List<csstree.CssNode>, _declaration: {} & object, rule: RuleContext) {
 		if (funcNode.name === "target-text") {
 			this.selector = csstree.generate(rule.ruleNode.prelude);
-			let first = funcNode.children.first();
-			let last = funcNode.children.last();
-			let func = first.name;
 
-			let value = csstree.generate(funcNode);
+			// TODO: is this the right type?
+			const first = funcNode.children.first() as csstree.FunctionNode;
+			const last = funcNode.children.last() as csstree.FunctionNode;
+			const func = first.name;
 
-			let args = [];
+			const value = csstree.generate(funcNode);
+
+			const args: string[] = [];
 
 			first.children.forEach(child => {
 				if (child.type === "Identifier") {
@@ -32,12 +52,12 @@ class TargetText extends Handler {
 				}
 			});
 
-			let style;
+			let style: string | undefined;
 			if (last !== first) {
 				style = last.name;
 			}
 
-			let variable = "--pagedjs-" + UUID();
+			const variable = "--pagedjs-" + UUID();
 
 			this.selector.split(",").forEach(s => {
 				this.textTargets[s] = {
@@ -56,29 +76,28 @@ class TargetText extends Handler {
 			funcNode.children = new csstree.List();
 			funcNode.children.appendData({
 				type: "Identifier",
-				loc: 0,
 				name: variable
 			});
 		}
 	}
 
 	//   parse this on the ONCONTENT : get all before and after and replace the value with a variable
-	onPseudoSelector(pseudoNode, pItem, pList, selector, rule) {
+	onPseudoSelector(pseudoNode: csstree.PseudoElementSelector, _pItem: csstree.ListItem<csstree.CssNode>, _pList: csstree.List<csstree.CssNode>, _selector: {} & object, rule: RuleContext) {
 		// console.log(pseudoNode);
 		// console.log(rule);
 
-		rule.ruleNode.block.children.forEach(properties => {
+		rule.ruleNode.block.children.forEach((properties: csstree.Declaration) => {
 			if (pseudoNode.name === "before" && properties.property === "content") {
 				// let beforeVariable = "--pagedjs-" + UUID();
 
-				let contenu = properties.value.children;
+				const contenu = (properties.value as csstree.Value).children;
 				contenu.forEach(prop => {
 					if (prop.type === "String") {
 						this.beforeContent = prop.value;
 					}
 				});
 			} else if (pseudoNode.name === "after" && properties.property === "content") {
-				properties.value.children.forEach(prop => {
+				(properties.value as csstree.Value).children.forEach(prop => {
 					if (prop.type === "String") {
 						this.afterContent = prop.value;
 					}
@@ -87,16 +106,16 @@ class TargetText extends Handler {
 		});
 	}
 
-	afterParsed(fragment) {
+	afterParsed(fragment: HTMLElement) {
 		Object.keys(this.textTargets).forEach(name => {
-			let target = this.textTargets[name];
-			let split = target.selector.split(/::?/g);
-			let query = split[0];
-			let queried = fragment.querySelectorAll(query);
-			let textContent;
-			queried.forEach((selected, index) => {
-				let val = attr(selected, target.args);
-				let element = fragment.querySelector(querySelectorEscape(val));
+			const target = this.textTargets[name];
+			const split = target.selector.split(/::?/g);
+			const query = split[0];
+			const queried = fragment.querySelectorAll<HTMLElement>(query);
+			let textContent: string | undefined;
+			queried.forEach((selected) => {
+				const val = attr(selected, target.args);
+				const element = fragment.querySelector(querySelectorEscape(val));
 				if (element) {
 					// content & first-letter & before & after refactorized
 					if (target.style) {
