@@ -1,14 +1,14 @@
-import Handler from "../handler";
 import csstree from "css-tree";
 
-class PrintMedia extends Handler {
-	constructor(chunker, polisher, caller) {
-		super(chunker, polisher, caller);
-	}
+import Handler from "../handler";
+import type { HooksInterface } from "../handler";
+import type Chunker from "../../chunker/chunker";
+import type Polisher from "../../polisher/polisher";
 
-	onAtMedia(node, item, list) {
-		let media = this.getMediaName(node);
-		let rules;
+class PrintMedia extends Handler implements HooksInterface<Chunker["hooks"] & Polisher["hooks"]> {
+	onAtMedia(node: csstree.Atrule, item: csstree.ListItem<csstree.CssNode>, list: csstree.List<csstree.CssNode>) {
+		const media = this.getMediaName(node);
+		let rules: csstree.List<csstree.CssNode> | undefined;
 		if (media.includes("print")) {
 			rules = node.block.children;
 
@@ -23,12 +23,12 @@ class PrintMedia extends Handler {
 							type: "Combinator",
 							name: " "
 						});
-	
+
 						rule.children.prependData({
 							type: "ClassSelector",
 							name: "pagedjs_page"
 						});
-					});	
+					});
 				}
 			});
 
@@ -46,8 +46,8 @@ class PrintMedia extends Handler {
 
 	}
 
-	getMediaName(node) {
-		let media = [];
+	private getMediaName(node: csstree.Atrule) {
+		const media: string[] = [];
 
 		if (typeof node.prelude === "undefined" ||
 				node.prelude.type !== "AtrulePrelude" ) {
@@ -56,9 +56,9 @@ class PrintMedia extends Handler {
 
 		csstree.walk(node.prelude, {
 			visit: "Identifier",
-			enter: (identNode, iItem, iList) => {
+			enter: (identNode) => {
 				media.push(identNode.name);
-			}
+			},
 		});
 		return media;
 	}

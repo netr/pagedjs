@@ -1,4 +1,4 @@
-import pagedMediaHandlers from "../modules/paged-media/index.js";
+import pagedMediaHandlers from "../modules/paged-media";
 import generatedContentHandlers from "../modules/generated-content";
 import filters from "../modules/filters";
 import { EventEmitter } from "./event-emitter";

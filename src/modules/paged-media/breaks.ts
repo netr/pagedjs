@@ -1,36 +1,50 @@
-import Handler from "../handler";
 import csstree from "css-tree";
+
+import Handler from "../handler";
+import type { HooksInterface } from "../handler";
+import type Chunker from "../../chunker/chunker";
+import type Page from "../../chunker/page";
+import type Polisher from "../../polisher/polisher";
+import type { RuleContext } from "../../polisher/sheet";
 import { displayedElementAfter, displayedElementBefore, needsPageBreak } from "../../utils/dom";
 
-class Breaks extends Handler {
-	constructor(chunker, polisher, caller) {
-		super(chunker, polisher, caller);
+interface Breaker {
+	property: string;
+	value: string;
+	selector: string;
+	name?: string;
+}
 
-		this.breaks = {};
-	}
+interface BreakPage extends Page {
+	splitFrom?: string;
+	splitTo?: string;
+	breakBefore?: string;
+	breakAfter?: string;
+	previousBreakAfter?: string;
+}
 
-	onDeclaration(declaration, dItem, dList, rule) {
+class Breaks extends Handler implements HooksInterface<Chunker["hooks"] & Polisher["hooks"]> {
+	private readonly breaks: Record<string, Breaker[]> = {};
+
+	onDeclaration(declaration: csstree.Declaration, dItem: csstree.ListItem<csstree.CssNode>, dList: csstree.List<csstree.CssNode>, rule: RuleContext) {
 		let property = declaration.property;
 
 		if (property === "page") {
-			let children = declaration.value.children.first();
-			let value = children.name;
-			let selector = csstree.generate(rule.ruleNode.prelude);
-			let name = value;
+			const children = (declaration.value as csstree.Value).children.first() as csstree.Identifier;
+			const value = children.name;
+			const selector = csstree.generate(rule.ruleNode.prelude);
+			const name = value;
 
-			let breaker = {
-				property: property,
-				value: value,
-				selector: selector,
-				name: name
+			const breaker: Breaker = {
+				property,
+				value,
+				selector,
+				name,
 			};
 
 			selector.split(",").forEach((s) => {
-				if (!this.breaks[s]) {
-					this.breaks[s] = [breaker];
-				} else {
-					this.breaks[s].push(breaker);
-				}
+				this.breaks[s] ??= [];
+				this.breaks[s].push(breaker);
 			});
 
 			dList.remove(dItem);
@@ -41,9 +55,9 @@ class Breaks extends Handler {
 				property === "page-break-before" ||
 				property === "page-break-after"
 		) {
-			let child = declaration.value.children.first();
-			let value = child.name;
-			let selector = csstree.generate(rule.ruleNode.prelude);
+			const child = (declaration.value as csstree.Value).children.first() as csstree.Identifier;
+			const value = child.name;
+			const selector = csstree.generate(rule.ruleNode.prelude);
 
 			if (property === "page-break-before") {
 				property = "break-before";
@@ -51,18 +65,15 @@ class Breaks extends Handler {
 				property = "break-after";
 			}
 
-			let breaker = {
+			const breaker: Breaker = {
 				property: property,
 				value: value,
 				selector: selector
 			};
 
 			selector.split(",").forEach((s) => {
-				if (!this.breaks[s]) {
-					this.breaks[s] = [breaker];
-				} else {
-					this.breaks[s].push(breaker);
-				}
+				this.breaks[s] ??= [];
+				this.breaks[s].push(breaker);
 			});
 
 			// Remove from CSS -- handle right / left in module
@@ -70,20 +81,20 @@ class Breaks extends Handler {
 		}
 	}
 
-	afterParsed(parsed) {
+	afterParsed(parsed: HTMLElement | DocumentFragment) {
 		this.processBreaks(parsed, this.breaks);
 	}
 
-	processBreaks(parsed, breaks) {
-		for (let b in breaks) {
+	private processBreaks(parsed: HTMLElement | DocumentFragment, breaks: Record<string, Breaker[]>) {
+		for (const b in breaks) {
 			// Find elements
-			let elements = parsed.querySelectorAll(b);
+			const elements = parsed.querySelectorAll(b);
 			// Add break data
-			for (var i = 0; i < elements.length; i++) {
-				for (let prop of breaks[b]) {
+			for (let i = 0; i < elements.length; i++) {
+				for (const prop of breaks[b]) {
 
 					if (prop.property === "break-after") {
-						let nodeAfter = displayedElementAfter(elements[i], parsed);
+						const nodeAfter = displayedElementAfter(elements[i], parsed);
 
 						elements[i].setAttribute("data-break-after", prop.value);
 
@@ -91,7 +102,7 @@ class Breaks extends Handler {
 							nodeAfter.setAttribute("data-previous-break-after", prop.value);
 						}
 					} else if (prop.property === "break-before") {
-						let nodeBefore = displayedElementBefore(elements[i], parsed, true);
+						const nodeBefore = displayedElementBefore(elements[i], parsed, true);
 
 						// Breaks are only allowed between siblings, not between a box and its container.
 						// If we cannot find a node before we should not break!
@@ -107,7 +118,7 @@ class Breaks extends Handler {
 					} else if (prop.property === "page") {
 						elements[i].setAttribute("data-page", prop.value);
 
-						let nodeAfter = displayedElementAfter(elements[i], parsed);
+						const nodeAfter = displayedElementAfter(elements[i], parsed);
 
 						if (nodeAfter) {
 							nodeAfter.setAttribute("data-after-page", prop.value);
@@ -120,21 +131,10 @@ class Breaks extends Handler {
 		}
 	}
 
-	mergeBreaks(pageBreaks, newBreaks) {
-		for (let b in newBreaks) {
-			if (b in pageBreaks) {
-				pageBreaks[b] = pageBreaks[b].concat(newBreaks[b]);
-			} else {
-				pageBreaks[b] = newBreaks[b];
-			}
-		}
-		return pageBreaks;
-	}
-
-	addBreakAttributes(pageElement, page) {
-		let before = pageElement.querySelector("[data-break-before]");
-		let after = pageElement.querySelector("[data-break-after]");
-		let previousBreakAfter = pageElement.querySelector("[data-previous-break-after]");
+	private addBreakAttributes(pageElement: HTMLElement, page: BreakPage) {
+		const before = pageElement.querySelector<HTMLElement>("[data-break-before]");
+		const after = pageElement.querySelector<HTMLElement>("[data-break-after]");
+		const previousBreakAfter = pageElement.querySelector<HTMLElement>("[data-previous-break-after]");
 
 		if (before) {
 			if (before.dataset.splitFrom) {
@@ -163,8 +163,8 @@ class Breaks extends Handler {
 		}
 	}
 
-	afterPageLayout(pageElement, page) {
-		this.addBreakAttributes(pageElement, page);
+	afterPageLayout(pageElement: HTMLElement, page: Page) {
+		this.addBreakAttributes(pageElement, page as BreakPage);
 	}
 }
 
