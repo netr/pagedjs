@@ -1,6 +1,3 @@
-import EventEmitter from "event-emitter";
-import type { Emitter } from "event-emitter";
-
 import BreakToken from "./breaktoken";
 import Layout from "./layout";
 import type { LayoutHooks, LayoutOptions } from "./layout";
@@ -14,8 +11,6 @@ export interface PageOptions extends LayoutOptions {}
  * Render a page
  * @class
  */
-// Due to EventEmitter:
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 class Page {
 	public width?: number;
 	public height?: number;
@@ -281,11 +276,6 @@ class Page {
 		this.wrapper = undefined;
 	}
 }
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging
-declare interface Page extends Emitter {}
-
-EventEmitter(Page.prototype);
 
 
 export default Page;

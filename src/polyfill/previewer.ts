@@ -1,12 +1,11 @@
-import EventEmitter from "event-emitter";
-import type { Emitter } from "event-emitter";
-
 import Hook from "../utils/hook";
 import Chunker from "../chunker/chunker";
 import type { ChunkerOptions } from "../chunker/chunker";
 import type Page from "../chunker/page";
 import Polisher from "../polisher/polisher";
+import type { NamedPageSize } from "../polisher/sizes";
 
+import { EventEmitter } from "../utils/event-emitter";
 import { initializeHandlers, registerHandlers } from "../utils/handlers";
 import type { Handlers } from "../utils/handlers";
 
@@ -23,13 +22,26 @@ export interface PreviewChunker extends Chunker {
 	size?: Previewer["size"];
 }
 
-// Due to EventEmitter:
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
-class Previewer {
+// TODO: this class should probably not make assumptions about the at-pages module.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AtPageModel = Record<string, any>;
+
+interface PreviewerEventMap extends HandlersEventMap {
+	rendering(chunker: PreviewChunker): void;
+	page(page: Page): void;
+	rendered(chunker: PreviewChunker): void;
+}
+
+interface HandlersEventMap {
+	size(size: NamedPageSize): void;
+	atpages(atpages: AtPageModel[]): void;
+}
+
+class Previewer extends EventEmitter<PreviewerEventMap> {
 	// Process styles
 	private readonly polisher = new Polisher(false);
 	private readonly chunker: PreviewChunker;
-	private size = {
+	private size: NamedPageSize & { format?: undefined, orientation?: undefined } = {
 		width: {
 			value: 8.5,
 			unit: "in"
@@ -41,14 +53,14 @@ class Previewer {
 		format: undefined,
 		orientation: undefined
 	};
-	private handlers?: Handlers;
-	// TODO: this class should probably not make assumptions about the at-pages module.
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	private atpages?: Record<string, any>;
+	private handlers?: Handlers<HandlersEventMap>;
+	private atpages?: AtPageModel[];
 
 	public readonly hooks: PreviewerHooks;
 
 	public constructor(private readonly settings: PreviewerOptions = {}) {
+		super();
+
 		// Chunk contents
 		this.chunker = new Chunker(undefined, undefined, this.settings);
 
@@ -68,16 +80,16 @@ class Previewer {
 	}
 
 	private initializeHandlers() {
-		const handlers = initializeHandlers(this.chunker, this.polisher, this);
+		const handlers = initializeHandlers<HandlersEventMap>(this.chunker, this.polisher, this);
 
 		handlers.on("size", (size) => {
 			this.size = size;
 			this.emit("size", size);
 		});
 
-		handlers.on("atpages", (pages) => {
-			this.atpages = pages;
-			this.emit("atpages", pages);
+		handlers.on("atpages", (atpages) => {
+			this.atpages = atpages;
+			this.emit("atpages", atpages);
 		});
 
 		return handlers;
@@ -189,10 +201,5 @@ class Previewer {
 		return flow;
 	}
 }
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging
-declare interface Previewer extends Emitter {}
-
-EventEmitter(Previewer.prototype);
 
 export default Previewer;

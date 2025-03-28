@@ -26,8 +26,6 @@ import {
 } from "../utils/dom";
 import BreakToken from "./breaktoken";
 import RenderResult from "./renderresult";
-import EventEmitter from "event-emitter";
-import type { Emitter } from "event-emitter";
 import Hook from "../utils/hook";
 import Overflow from "./overflow";
 
@@ -64,8 +62,6 @@ interface LayoutHTMLElement extends HTMLElement {
  * Layout
  * @class
  */
-// Due to EventEmitter:
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 class Layout {
 	private readonly bounds: DOMRect;
 	private readonly gap: number;
@@ -1540,10 +1536,5 @@ class Layout {
 		}
 	}
 }
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging
-declare interface Layout extends Emitter {}
-
-EventEmitter(Layout.prototype);
 
 export default Layout;

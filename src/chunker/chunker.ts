@@ -2,8 +2,7 @@ import type BreakToken from "./breaktoken";
 import Page from "./page";
 import type { PageHooks, PageOptions } from "./page";
 import ContentParser from "./parser";
-import EventEmitter from "event-emitter";
-import type { Emitter } from "event-emitter";
+import { EventEmitter } from "../utils/event-emitter";
 import Hook from "../utils/hook";
 import Queue from "../utils/queue";
 
@@ -97,13 +96,18 @@ export type ChunkerHooks = PageHooks & {
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface ChunkerOptions extends PageOptions {}
 
+interface ChunkerEventMap {
+	rendering(content: HTMLElement | DocumentFragment): void;
+	page(page: Page): void;
+	renderedPage(page: Page): void;
+	rendered(pages: Page[]): void;
+}
+
 /**
  * Chop up text into flows
  * @class
  */
-// Due to EventEmitter:
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
-class Chunker {
+class Chunker extends EventEmitter<ChunkerEventMap> {
 	public readonly hooks: ChunkerHooks = {
 		beforeParsed: new Hook(this),
 		filter: new Hook(this),
@@ -136,6 +140,8 @@ class Chunker {
 	public pagesArea: HTMLDivElement | undefined;
 
 	public constructor(content: HTMLElement | undefined, renderTo?: Element, public readonly settings?: ChunkerOptions) {
+		super();
+
 		if (content) {
 			this.flow(content, renderTo);
 		}
@@ -576,10 +582,5 @@ class Chunker {
 	}
 
 }
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging
-declare interface Chunker extends Emitter {}
-
-EventEmitter(Chunker.prototype);
 
 export default Chunker;
