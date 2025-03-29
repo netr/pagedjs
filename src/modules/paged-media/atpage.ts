@@ -1,22 +1,86 @@
-import Handler from "../handler";
 import csstree from "css-tree";
+
+import Handler from "../handler";
+import type { HooksInterface } from "../handler";
+import type BreakToken from "../../chunker/breaktoken";
+import type Chunker from "../../chunker/chunker";
+import type Page from "../../chunker/page";
+import type Polisher from "../../polisher/polisher";
+import type Sheet from "../../polisher/sheet";
 import pageSizes from "../../polisher/sizes";
 import { findElement, rebuildAncestors } from "../../utils/dom";
 import { CSSValueToString } from "../../utils/utils";
 
-class AtPage extends Handler {
-	constructor(chunker, polisher, caller) {
-		super(chunker, polisher, caller);
-
-		this.pages = {};
-
-		this.width = undefined;
-		this.height = undefined;
-		this.orientation = undefined;
-		this.marginalia = {};
+declare module "css-tree" {
+	interface List<TData> {
+		// The @types/css-tree@1.0.7 typing is wrong.
+		insertData(data: TData, before?: ListItem<TData> | null): List<TData>;
 	}
+}
 
-	pageModel(selector) {
+interface Dimension {
+	value: string;
+	unit: string;
+}
+
+interface PageSize {
+	width: Dimension;
+	height: Dimension;
+	format: string;
+	orientation?: "landscape" | "portrait";
+	bleed?: Rect<Dimension>;
+}
+
+interface Rect<T = Dimension | ({} & object)> {
+	top: T;
+	right: T;
+	left: T;
+	bottom: T;
+}
+
+interface PageModel {
+	selector: string;
+	name?: string;
+	psuedo?: string;
+	nth?: string;
+	marginalia: Record<string, csstree.Block>;
+	size?: PageSize;
+	width?: Dimension;
+	height?: Dimension;
+	format?: string;
+	orientation?: PageSize["orientation"];
+	bleed?: Rect<Dimension>;
+	margin: Rect;
+	padding: Rect;
+	border: Rect<string | ({} & object)>;
+	backgroundOrigin?: number;
+	block?: csstree.Block | ({} & object),
+	marks?: string[];
+	notes?: Record<string, csstree.Block>;
+	added: boolean;
+}
+
+interface Marginalia {
+	page: PageModel;
+	selector: string;
+	block: csstree.Block;
+	hasContent: boolean;
+}
+
+export interface AtPageEventMap {
+	atpages(atpages: Record<string, PageModel>): void;
+	size(size: PageSize): void;
+}
+
+class AtPage extends Handler<AtPageEventMap> implements HooksInterface<Chunker["hooks"] & Polisher["hooks"]> {
+	private readonly pages: Record<string, PageModel> = {};
+	private width?: Dimension;
+	private height?: Dimension;
+	private format?: string;
+	private orientation?: PageSize["orientation"];
+	private marginalia: Record<string, Marginalia> = {};
+
+	private pageModel(selector: string): PageModel {
 		return {
 			selector: selector,
 			name: undefined,
@@ -53,10 +117,13 @@ class AtPage extends Handler {
 	}
 
 	// Find and Remove @page rules
-	onAtPage(node, item, list) {
-		let page, marginalia;
+	onAtPage(node: csstree.Atrule, item: csstree.ListItem<csstree.CssNode>, list: csstree.List<csstree.CssNode>) {
+		let page: PageModel | undefined;
+		let marginalia: Record<string, csstree.Block> | undefined;
 		let selector = "";
-		let named, psuedo, nth;
+		let named: string | undefined;
+		let psuedo: string | undefined;
+		let nth: string | undefined;
 		let needsMerge = false;
 
 		if (node.prelude) {
@@ -94,10 +161,10 @@ class AtPage extends Handler {
 			page.marginalia = marginalia;
 		}
 
-		let notes = this.replaceNotes(node);
+		const notes = this.replaceNotes(node);
 		page.notes = notes;
 
-		let declarations = this.replaceDeclarations(node);
+		const declarations = this.replaceDeclarations(node);
 
 		if (declarations.size) {
 			page.size = declarations.size;
@@ -107,7 +174,7 @@ class AtPage extends Handler {
 			page.format = declarations.size.format;
 		}
 
-		if (declarations.bleed && declarations.bleed[0] != "auto") {
+		if (declarations.bleed && declarations.bleed[0] !== "auto") {
 			switch (declarations.bleed.length) {
 				case 4: // top right bottom left
 					page.bleed = {
@@ -147,10 +214,11 @@ class AtPage extends Handler {
 			if (!declarations.bleed || declarations.bleed && declarations.bleed[0] === "auto") {
 				// Spec say 6pt, but needs more space for marks
 				page.bleed = {
-					top: { value: 6, unit: "mm" },
-					right: { value: 6, unit: "mm" },
-					bottom: { value: 6, unit: "mm" },
-					left: { value: 6, unit: "mm" }
+					// TODO: these values were numbers.
+					top: { value: "6", unit: "mm" },
+					right: { value: "6", unit: "mm" },
+					bottom: { value: "6", unit: "mm" },
+					left: { value: "6", unit: "mm" }
 				};
 			}
 
@@ -172,8 +240,9 @@ class AtPage extends Handler {
 			page.marks = declarations.marks;
 		}
 
+		// TODO: base this decision on page.block.
 		if (needsMerge) {
-			page.block.children.appendList(node.block.children);
+			(page.block as csstree.Block).children.appendList(node.block.children);
 		} else {
 			page.block = node.block;
 		}
@@ -182,34 +251,20 @@ class AtPage extends Handler {
 		list.remove(item);
 	}
 
-	/* Handled in breaks */
-	/*
-	afterParsed(parsed) {
-		for (let b in this.named) {
-			// Find elements
-			let elements = parsed.querySelectorAll(b);
-			// Add break data
-			for (var i = 0; i < elements.length; i++) {
-				elements[i].setAttribute("data-page", this.named[b]);
-			}
-		}
-	}
-	*/
-
-	afterTreeWalk(ast, sheet) {
-		let dirtyPage = "*" in this.pages && this.pages["*"].added === false;
+	afterTreeWalk(ast: csstree.StyleSheet, sheet: Sheet) {
+		const dirtyPage = "*" in this.pages && !this.pages["*"].added;
 
 		this.addPageClasses(this.pages, ast, sheet);
 
 		if (dirtyPage) {
-			let width = this.pages["*"].width;
-			let height = this.pages["*"].height;
-			let format = this.pages["*"].format;
-			let orientation = this.pages["*"].orientation;
-			let bleed = this.pages["*"].bleed;
-			let marks = this.pages["*"].marks;
-			let bleedverso = undefined;
-			let bleedrecto = undefined;
+			const width = this.pages["*"].width;
+			const height = this.pages["*"].height;
+			const format = this.pages["*"].format;
+			const orientation = this.pages["*"].orientation;
+			const bleed = this.pages["*"].bleed;
+			const marks = this.pages["*"].marks;
+			let bleedverso: Rect<Dimension> | undefined;
+			let bleedrecto: Rect<Dimension> | undefined;
 
 			if (":left" in this.pages) {
 				bleedverso = this.pages[":left"].bleed;
@@ -236,13 +291,13 @@ class AtPage extends Handler {
 		}
 	}
 
-	getTypeSelector(ast) {
+	private getTypeSelector(ast: csstree.CssNode) {
 		// Find page name
-		let name;
+		let name: string | undefined;
 
 		csstree.walk(ast, {
 			visit: "TypeSelector",
-			enter: (node, item, list) => {
+			enter: (node) => {
 				name = node.name;
 			}
 		});
@@ -250,12 +305,12 @@ class AtPage extends Handler {
 		return name;
 	}
 
-	getPsuedoSelector(ast) {
+	private getPsuedoSelector(ast: csstree.CssNode) {
 		// Find if it has :left & :right & :black & :first
-		let name;
+		let name: string | undefined;
 		csstree.walk(ast, {
 			visit: "PseudoClassSelector",
-			enter: (node, item, list) => {
+			enter: (node) => {
 				if (node.name !== "nth") {
 					name = node.name;
 				}
@@ -265,14 +320,14 @@ class AtPage extends Handler {
 		return name;
 	}
 
-	getNthSelector(ast) {
+	private getNthSelector(ast: csstree.CssNode) {
 		// Find if it has :nth
-		let nth;
+		let nth: string | undefined;
 		csstree.walk(ast, {
 			visit: "PseudoClassSelector",
-			enter: (node, item, list) => {
+			enter: (node) => {
 				if (node.name === "nth" && node.children) {
-					let raw = node.children.first();
+					const raw = node.children.first() as csstree.Raw;
 					nth = raw.value;
 				}
 			}
@@ -281,8 +336,8 @@ class AtPage extends Handler {
 		return nth;
 	}
 
-	replaceMarginalia(ast) {
-		let parsed = {};
+	private replaceMarginalia(ast: csstree.Atrule) {
+		const parsed: Record<string, csstree.Block> = {};
 		const MARGINS = [
 			"top-left-corner", "top-left", "top", "top-center", "top-right", "top-right-corner",
 			"bottom-left-corner", "bottom-left", "bottom", "bottom-center", "bottom-right", "bottom-right-corner",
@@ -315,13 +370,13 @@ class AtPage extends Handler {
 		return parsed;
 	}
 
-	replaceNotes(ast) {
-		let parsed = {};
+	private replaceNotes(ast: csstree.Atrule) {
+		const parsed: Record<string, csstree.Block> = {};
 
 		csstree.walk(ast.block, {
 			visit: "Atrule",
 			enter: (node, item, list) => {
-				let name = node.name;
+				const name = node.name;
 				if (name === "footnote") {
 					parsed[name] = node.block;
 					list.remove(item);
@@ -332,13 +387,20 @@ class AtPage extends Handler {
 		return parsed;
 	}
 
-	replaceDeclarations(ast) {
-		let parsed = {};
+	private replaceDeclarations(ast: csstree.Atrule) {
+		const parsed: {
+			marks?: string[];
+			margin?: Rect;
+			padding?: Rect;
+			border?: Rect<string | ({} & object)>;
+			size?: PageSize;
+			bleed?: [("auto" | Dimension)?, ...Dimension[]];
+		} = {};
 
 		csstree.walk(ast.block, {
 			visit: "Declaration",
 			enter: (declaration, dItem, dList) => {
-				let prop = csstree.property(declaration.property).name;
+				const prop = csstree.property(declaration.property).name;
 				// let value = declaration.value;
 
 				if (prop === "marks") {
@@ -355,7 +417,7 @@ class AtPage extends Handler {
 					dList.remove(dItem);
 
 				} else if (prop.indexOf("margin-") === 0) {
-					let m = prop.substring("margin-".length);
+					const m = prop.substring("margin-".length);
 					if (!parsed.margin) {
 						parsed.margin = {
 							top: {},
@@ -364,15 +426,15 @@ class AtPage extends Handler {
 							bottom: {}
 						};
 					}
-					parsed.margin[m] = declaration.value.children.first();
+					parsed.margin[m] = (declaration.value as csstree.Value).children.first();
 					dList.remove(dItem);
 
 				} else if (prop === "padding") {
-					parsed.padding = this.getPaddings(declaration.value);
+					parsed.padding = this.getPaddings(declaration.value as csstree.Value);
 					dList.remove(dItem);
 
 				} else if (prop.indexOf("padding-") === 0) {
-					let p = prop.substring("padding-".length);
+					const p = prop.substring("padding-".length);
 					if (!parsed.padding) {
 						parsed.padding = {
 							top: {},
@@ -381,7 +443,7 @@ class AtPage extends Handler {
 							bottom: {}
 						};
 					}
-					parsed.padding[p] = declaration.value.children.first();
+					parsed.padding[p] = (declaration.value as csstree.Value).children.first();
 					dList.remove(dItem);
 				}
 
@@ -412,7 +474,7 @@ class AtPage extends Handler {
 							bottom: {}
 						};
 					}
-					let p = prop.substring("border-".length);
+					const p = prop.substring("border-".length);
 
 					parsed.border[p] = csstree.generate(declaration.value);
 					dList.remove(dItem);
@@ -426,7 +488,7 @@ class AtPage extends Handler {
 					parsed.bleed = [];
 
 					csstree.walk(declaration, {
-						enter: (subNode) => {
+						enter: (subNode: csstree.CssNode) => {
 							switch (subNode.type) {
 								case "String": // bleed: "auto"
 									if (subNode.value.indexOf("auto") > -1) {
@@ -446,7 +508,7 @@ class AtPage extends Handler {
 									});
 									break;
 								default:
-								// ignore
+									// ignore
 							}
 
 						}
@@ -461,17 +523,21 @@ class AtPage extends Handler {
 		return parsed;
 
 	}
-	getSize(declaration) {
-		let width, height, orientation, format;
+
+	private getSize(declaration: csstree.Declaration) {
+		let width: Dimension | undefined;
+		let height: Dimension | undefined;
+		let orientation: PageSize["orientation"] | undefined;
+		let format: string | undefined;
 
 		// Get size: Xmm Ymm
 		csstree.walk(declaration, {
 			visit: "Dimension",
-			enter: (node, item, list) => {
-				let { value, unit } = node;
-				if (typeof width === "undefined") {
+			enter: (node) => {
+				const { value, unit } = node;
+				if (!width) {
 					width = { value, unit };
-				} else if (typeof height === "undefined") {
+				} else if (!height) {
 					height = { value, unit };
 				}
 			}
@@ -480,9 +546,9 @@ class AtPage extends Handler {
 		// Get size: "A4"
 		csstree.walk(declaration, {
 			visit: "String",
-			enter: (node, item, list) => {
-				let name = node.value.replace(/["|']/g, "");
-				let s = pageSizes[name];
+			enter: (node) => {
+				const name = node.value.replace(/["|']/g, "");
+				const s = pageSizes[name];
 				if (s) {
 					width = s.width;
 					height = s.height;
@@ -493,12 +559,12 @@ class AtPage extends Handler {
 		// Get Format or Landscape or Portrait
 		csstree.walk(declaration, {
 			visit: "Identifier",
-			enter: (node, item, list) => {
-				let name = node.name;
+			enter: (node) => {
+				const name = node.name;
 				if (name === "landscape" || name === "portrait") {
-					orientation = node.name;
+					orientation = name;
 				} else if (name !== "auto") {
-					let s = pageSizes[name];
+					const s = pageSizes[name];
 					if (s) {
 						width = s.width;
 						height = s.height;
@@ -516,9 +582,9 @@ class AtPage extends Handler {
 		};
 	}
 
-	getMargins(declaration) {
-		let margins = [];
-		let margin = {
+	private getMargins(declaration: csstree.Declaration) {
+		const margins: Dimension[] = [];
+		const margin: Rect = {
 			top: {},
 			right: {},
 			left: {},
@@ -526,22 +592,25 @@ class AtPage extends Handler {
 		};
 
 		csstree.walk(declaration, {
-			enter: (node) => {
+			enter: (node: csstree.CssNode) => {
 				switch (node.type) {
 					case "Dimension": // margin: 1in 2in, margin: 20px, etc...
 						margins.push(node);
 						break;
 					case "Number": // margin: 0
-						margins.push({value: node.value, unit: "px"});
+						margins.push({
+							value: node.value,
+							unit: "px"
+						});
 						break;
 					default:
-					// ignore
+						// ignore
 				}
 			}
 		});
 
 		if (margins.length === 1) {
-			for (let m in margin) {
+			for (const m in margin) {
 				margin[m] = margins[0];
 			}
 		} else if (margins.length === 2) {
@@ -564,9 +633,9 @@ class AtPage extends Handler {
 		return margin;
 	}
 
-	getPaddings(declaration) {
-		let paddings = [];
-		let padding = {
+	private getPaddings(declaration: csstree.Value) {
+		const paddings: Dimension[] = [];
+		const padding: Rect = {
 			top: {},
 			right: {},
 			left: {},
@@ -574,21 +643,24 @@ class AtPage extends Handler {
 		};
 
 		csstree.walk(declaration, {
-			enter: (node) => {
+			enter: (node: csstree.CssNode) => {
 				switch (node.type) {
 					case "Dimension": // padding: 1in 2in, padding: 20px, etc...
 						paddings.push(node);
 						break;
 					case "Number": // padding: 0
-						paddings.push({value: node.value, unit: "px"});
+						paddings.push({
+							value: node.value,
+							unit: "px"
+						});
 						break;
 					default:
-					// ignore
+						// ignore
 				}
 			}
 		});
 		if (paddings.length === 1) {
-			for (let p in padding) {
+			for (const p in padding) {
 				padding[p] = paddings[0];
 			}
 		} else if (paddings.length === 2) {
@@ -613,83 +685,50 @@ class AtPage extends Handler {
 		return padding;
 	}
 
-	// get values for the border on the @page to pass them to the element with the .pagedjs_area class
-	getBorders(declaration) {
-		let border = {
-			top: {},
-			right: {},
-			left: {},
-			bottom: {}
-		};
+	private addPageClasses(pages: Record<string, PageModel>, ast: csstree.StyleSheet, sheet: Sheet) {
+		const children = ast.children as csstree.List<csstree.Rule>;
 
-		if (declaration.prop == "border") {
-			border.top = csstree.generate(declaration.value);
-			border.right = csstree.generate(declaration.value);
-			border.bottom = csstree.generate(declaration.value);
-			border.left = csstree.generate(declaration.value);
-
-		}
-		else if (declaration.prop == "border-top") {
-			border.top = csstree.generate(declaration.value);
-		}
-		else if (declaration.prop == "border-right") {
-			border.right = csstree.generate(declaration.value);
-
-		}
-		else if (declaration.prop == "border-bottom") {
-			border.bottom = csstree.generate(declaration.value);
-
-		}
-		else if (declaration.prop == "border-left") {
-			border.left = csstree.generate(declaration.value);
-		}
-
-		return border;
-	}
-
-
-	addPageClasses(pages, ast, sheet) {
 		// First add * page
-		if ("*" in pages && pages["*"].added === false) {
-			let p = this.createPage(pages["*"], ast.children, sheet);
+		if ("*" in pages && !pages["*"].added) {
+			const p = this.createPage(pages["*"], children, sheet);
 			sheet.insertRule(p);
 			pages["*"].added = true;
 		}
 		// Add :left & :right
-		if (":left" in pages && pages[":left"].added === false) {
-			let left = this.createPage(pages[":left"], ast.children, sheet);
+		if (":left" in pages && !pages[":left"].added) {
+			const left = this.createPage(pages[":left"], children, sheet);
 			sheet.insertRule(left);
 			pages[":left"].added = true;
 		}
-		if (":right" in pages && pages[":right"].added === false) {
-			let right = this.createPage(pages[":right"], ast.children, sheet);
+		if (":right" in pages && !pages[":right"].added) {
+			const right = this.createPage(pages[":right"], children, sheet);
 			sheet.insertRule(right);
 			pages[":right"].added = true;
 		}
 		// Add :first & :blank
-		if (":first" in pages && pages[":first"].added === false) {
-			let first = this.createPage(pages[":first"], ast.children, sheet);
+		if (":first" in pages && !pages[":first"].added) {
+			const first = this.createPage(pages[":first"], children, sheet);
 			sheet.insertRule(first);
 			pages[":first"].added = true;
 		}
-		if (":blank" in pages && pages[":blank"].added === false) {
-			let blank = this.createPage(pages[":blank"], ast.children, sheet);
+		if (":blank" in pages && !pages[":blank"].added) {
+			const blank = this.createPage(pages[":blank"], children, sheet);
 			sheet.insertRule(blank);
 			pages[":blank"].added = true;
 		}
 		// Add nth pages
-		for (let pg in pages) {
-			if (pages[pg].nth && pages[pg].added === false) {
-				let nth = this.createPage(pages[pg], ast.children, sheet);
+		for (const pg in pages) {
+			if (pages[pg].nth && !pages[pg].added) {
+				const nth = this.createPage(pages[pg], children, sheet);
 				sheet.insertRule(nth);
 				pages[pg].added = true;
 			}
 		}
 
 		// Add named pages
-		for (let pg in pages) {
-			if (pages[pg].name && pages[pg].added === false) {
-				let named = this.createPage(pages[pg], ast.children, sheet);
+		for (const pg in pages) {
+			if (pages[pg].name && !pages[pg].added) {
+				const named = this.createPage(pages[pg], children, sheet);
 				sheet.insertRule(named);
 				pages[pg].added = true;
 			}
@@ -697,67 +736,67 @@ class AtPage extends Handler {
 
 	}
 
-	createPage(page, ruleList, sheet) {
-
-		let selectors = this.selectorsForPage(page);
-		let children = page.block.children.copy();
-		let block = {
+	private createPage(page: PageModel, ruleList: csstree.List<csstree.Rule>, sheet: Sheet) {
+		const selectors = this.selectorsForPage(page);
+		const children = (page.block as csstree.Block).children.copy() as csstree.List<csstree.Declaration>;
+		const block: csstree.Block = {
 			type: "Block",
-			loc: 0,
 			children: children
 		};
 
 
-		let rule = this.createRule(selectors, block);
+		const rule = this.createRule(selectors, block);
 
-		this.addMarginVars(page.margin, children, children.first());
-		this.addPaddingVars(page.padding, children, children.first());
-		this.addBorderVars(page.border, children, children.first());
+		this.addMarginVars(page.margin, children);
+		this.addPaddingVars(page.padding, children);
+		this.addBorderVars(page.border, children);
 
 
 		if (page.width) {
-			this.addDimensions(page.width, page.height, page.orientation, children, children.first());
+			this.addDimensions(page.width, page.height, page.orientation, children);
 		}
 
 		if (page.marginalia) {
-			this.addMarginaliaStyles(page, ruleList, rule, sheet);
-			this.addMarginaliaContent(page, ruleList, rule, sheet);
+			this.addMarginaliaStyles(page, ruleList);
+			this.addMarginaliaContent(page, sheet);
 		}
 
-		if(page.notes) {
-			this.addNotesStyles(page.notes, page, ruleList, rule, sheet);
+		if (page.notes) {
+			this.addNotesStyles(page.notes, page, ruleList);
 		}
 
 		return rule;
 	}
 
-	addMarginVars(margin, list, item) {
+	private addMarginVars(margin: Rect, list: csstree.List<csstree.Declaration>) {
 		// variables for margins
-		for (let m in margin) {
+		for (const m in margin) {
 			if (typeof margin[m].value !== "undefined") {
-				let value = margin[m].value + (margin[m].unit || "");
-				let mVar = list.createItem({
+				const value = margin[m].value + (margin[m].unit || "");
+				const mVar = list.createItem({
 					type: "Declaration",
+					important: false,
 					property: "--pagedjs-margin-" + m,
 					value: {
 						type: "Raw",
 						value: value
 					}
 				});
-				list.append(mVar, item);
+				list.append(mVar);
 
 			}
 		}
 	}
 
-	addPaddingVars(padding, list, item) {
+	private addPaddingVars(padding: Rect, list: csstree.List<csstree.Declaration>) {
 		// variables for padding
-		for (let p in padding) {
+		for (const p in padding) {
 
 			if (typeof padding[p].value !== "undefined") {
-				let value = padding[p].value + (padding[p].unit || "");
-				let pVar = list.createItem({
+				const value = padding[p].value + (padding[p].unit || "");
+				const pVar = list.createItem({
 					type: "Declaration",
+					important: false,
 					property: "--pagedjs-padding-" + p,
 					value: {
 						type: "Raw",
@@ -765,13 +804,13 @@ class AtPage extends Handler {
 					}
 				});
 
-				list.append(pVar, item);
+				list.append(pVar);
 			}
 
 		}
 	}
 
-	addBorderVars(border, list, item) {
+	private addBorderVars(border: Rect<string | ({} & object)>, list: csstree.List<csstree.Declaration>) {
 		// variables for borders
 		for (const name of Object.keys(border)) {
 			const value = border[name];
@@ -779,22 +818,21 @@ class AtPage extends Handler {
 			if (typeof value === "string") {
 				const borderItem = list.createItem({
 					type: "Declaration",
+					important: false,
 					property: "--pagedjs-border-" + name,
 					value: {
 						type: "Raw",
-						value: value
+						value
 					}
 				});
-				list.append(borderItem, item);
+				list.append(borderItem);
 			}
 		}
 	}
 
-	addDimensions(width, height, orientation, list, item) {
-		let widthString, heightString;
-
-		widthString = CSSValueToString(width);
-		heightString = CSSValueToString(height);
+	private addDimensions(width: Dimension, height: Dimension, orientation: PageSize["orientation"], list: csstree.List<csstree.Declaration>) {
+		let widthString = CSSValueToString(width);
+		let heightString = CSSValueToString(height);
 
 		if (orientation && orientation !== "portrait") {
 			// reverse for orientation
@@ -802,22 +840,17 @@ class AtPage extends Handler {
 		}
 
 		// width variable
-		let wVar = this.createVariable("--pagedjs-pagebox-width", widthString);
+		const wVar = this.createVariable("--pagedjs-pagebox-width", widthString);
 		list.appendData(wVar);
 
 		// height variable
-		let hVar = this.createVariable("--pagedjs-pagebox-height", heightString);
+		const hVar = this.createVariable("--pagedjs-pagebox-height", heightString);
 		list.appendData(hVar);
-
-		// let w = this.createDimension("width", width);
-		// let h = this.createDimension("height", height);
-		// list.appendData(w);
-		// list.appendData(h);
 	}
 
-	addMarginaliaStyles(page, list, item, sheet) {
-		for (let loc in page.marginalia) {
-			let block = csstree.clone(page.marginalia[loc]);
+	private addMarginaliaStyles(page: PageModel, list: csstree.List<csstree.Rule>) {
+		for (const loc in page.marginalia) {
+			const block = csstree.clone(page.marginalia[loc]) as csstree.Block;
 			let hasContent = false;
 
 			if (block.children.isEmpty()) {
@@ -828,7 +861,8 @@ class AtPage extends Handler {
 				visit: "Declaration",
 				enter: (node, item, list) => {
 					if (node.property === "content") {
-						if (node.value.children && node.value.children.first().name === "none") {
+						const value = node.value as csstree.Value;
+						if (value.children && (value.children.first() as csstree.Identifier).name === "none") {
 							hasContent = false;
 						} else {
 							hasContent = true;
@@ -838,8 +872,8 @@ class AtPage extends Handler {
 					if (node.property === "vertical-align") {
 						csstree.walk(node, {
 							visit: "Identifier",
-							enter: (identNode, identItem, identlist) => {
-								let name = identNode.name;
+							enter: (identNode) => {
+								const name = identNode.name;
 								if (name === "top") {
 									identNode.name = "flex-start";
 								} else if (name === "middle") {
@@ -859,7 +893,7 @@ class AtPage extends Handler {
 							loc === "bottom-left" ||
 							loc === "bottom-center" ||
 							loc === "bottom-right")) {
-						let c = csstree.clone(node);
+						const c = csstree.clone(node) as csstree.Declaration;
 						c.property = "max-width";
 						list.appendData(c);
 					}
@@ -871,38 +905,38 @@ class AtPage extends Handler {
 							loc === "right-top" ||
 							loc === "right-middle" ||
 							loc === "right-bottom")) {
-						let c = csstree.clone(node);
+						const c = csstree.clone(node) as csstree.Declaration;
 						c.property = "max-height";
 						list.appendData(c);
 					}
 				}
 			});
 
-			let marginSelectors = this.selectorsForPageMargin(page, loc);
-			let marginRule = this.createRule(marginSelectors, block);
+			const marginSelectors = this.selectorsForPageMargin(page, loc);
+			const marginRule = this.createRule(marginSelectors, block);
 
 			list.appendData(marginRule);
 
-			let sel = csstree.generate({
+			const sel = csstree.generate({
 				type: "Selector",
 				children: marginSelectors
-			});
+			} satisfies csstree.Selector);
 
 			this.marginalia[sel] = {
-				page: page,
+				page,
 				selector: sel,
 				block: page.marginalia[loc],
-				hasContent: hasContent
+				hasContent
 			};
 
 		}
 	}
 
-	addMarginaliaContent(page, list, item, sheet) {
-		let displayNone;
+	private addMarginaliaContent(page: PageModel, sheet: Sheet) {
+		let displayNone = false;
 		// Just content
-		for (let loc in page.marginalia) {
-			let content = csstree.clone(page.marginalia[loc]);
+		for (const loc in page.marginalia) {
+			const content = csstree.clone(page.marginalia[loc]) as csstree.Block;
 			csstree.walk(content, {
 				visit: "Declaration",
 				enter: (node, item, list) => {
@@ -910,7 +944,8 @@ class AtPage extends Handler {
 						list.remove(item);
 					}
 
-					if (node.value.children && node.value.children.first().name === "none") {
+					const value = node.value as csstree.Value;
+					if (value.children && (value.children.first() as csstree.Identifier).name === "none") {
 						displayNone = true;
 					}
 				}
@@ -920,74 +955,74 @@ class AtPage extends Handler {
 				continue;
 			}
 
-			let displaySelectors = this.selectorsForPageMargin(page, loc);
-			let displayDeclaration;
+			const displaySelectors = this.selectorsForPageMargin(page, loc);
 
 			displaySelectors.insertData({
 				type: "Combinator",
 				name: ">"
-			});
+			} satisfies csstree.Combinator);
 
 			displaySelectors.insertData({
 				type: "ClassSelector",
 				name: "pagedjs_margin-content"
-			});
+			} satisfies csstree.ClassSelector);
 
 			displaySelectors.insertData({
 				type: "Combinator",
 				name: ">"
-			});
+			} satisfies csstree.Combinator);
 
 			displaySelectors.insertData({
 				type: "TypeSelector",
 				name: "*"
-			});
+			} satisfies csstree.TypeSelector);
 
+			let displayDeclaration: csstree.Declaration | undefined;
 			if (displayNone) {
-				displayDeclaration = this.createDeclaration("display", "none");
+				displayDeclaration = this.createDeclaration("display", "none", false);
 			} else {
-				displayDeclaration = this.createDeclaration("display", "block");
+				displayDeclaration = this.createDeclaration("display", "block", false);
 			}
 
-			let displayRule = this.createRule(displaySelectors, [displayDeclaration]);
+			const displayRule = this.createRule(displaySelectors, [displayDeclaration]);
 			sheet.insertRule(displayRule);
 
 			// insert content rule
-			let contentSelectors = this.selectorsForPageMargin(page, loc);
+			const contentSelectors = this.selectorsForPageMargin(page, loc);
 
 			contentSelectors.insertData({
 				type: "Combinator",
 				name: ">"
-			});
+			} satisfies csstree.Combinator);
 
 			contentSelectors.insertData({
 				type: "ClassSelector",
 				name: "pagedjs_margin-content"
-			});
+			} satisfies csstree.ClassSelector);
 
 			contentSelectors.insertData({
 				type: "PseudoElementSelector",
 				name: "after",
 				children: null
-			});
+			} satisfies csstree.PseudoElementSelector);
 
-			let contentRule = this.createRule(contentSelectors, content);
+			const contentRule = this.createRule(contentSelectors, content);
 			sheet.insertRule(contentRule);
 		}
 	}
 
-	addRootVars(ast, width, height, orientation, bleed, bleedrecto, bleedverso, marks) {
-		let rules = [];
-		let selectors = new csstree.List();
+	private addRootVars(ast: csstree.StyleSheet, width: Dimension, height: Dimension, orientation: PageSize["orientation"], bleed: Rect<Dimension>, bleedrecto: Rect<Dimension>, bleedverso: Rect<Dimension>, marks: string[]) {
+		const rules: csstree.Declaration[] = [];
+		const selectors = new csstree.List<csstree.PseudoClassSelector>();
 		selectors.insertData({
 			type: "PseudoClassSelector",
 			name: "root",
 			children: null
-		});
+		} satisfies csstree.PseudoClassSelector);
 
-		let widthString, heightString;
-		let widthStringRight, heightStringRight;
-		let widthStringLeft, heightStringLeft;
+		let widthString: string | undefined, heightString: string | undefined;
+		let widthStringRight: string | undefined, heightStringRight: string | undefined;
+		let widthStringLeft: string | undefined, heightStringLeft: string | undefined;
 
 		if (!bleed) {
 			widthString = CSSValueToString(width);
@@ -1006,10 +1041,10 @@ class AtPage extends Handler {
 			widthStringLeft = `calc( ${CSSValueToString(width)} + ${CSSValueToString(bleed.left)} + ${CSSValueToString(bleed.right)} )`;
 			heightStringLeft = `calc( ${CSSValueToString(height)} + ${CSSValueToString(bleed.top)} + ${CSSValueToString(bleed.bottom)} )`;
 
-			let bleedTop = this.createVariable("--pagedjs-bleed-top", CSSValueToString(bleed.top));
-			let bleedRight = this.createVariable("--pagedjs-bleed-right", CSSValueToString(bleed.right));
-			let bleedBottom = this.createVariable("--pagedjs-bleed-bottom", CSSValueToString(bleed.bottom));
-			let bleedLeft = this.createVariable("--pagedjs-bleed-left", CSSValueToString(bleed.left));
+			const bleedTop = this.createVariable("--pagedjs-bleed-top", CSSValueToString(bleed.top));
+			const bleedRight = this.createVariable("--pagedjs-bleed-right", CSSValueToString(bleed.right));
+			const bleedBottom = this.createVariable("--pagedjs-bleed-bottom", CSSValueToString(bleed.bottom));
+			const bleedLeft = this.createVariable("--pagedjs-bleed-left", CSSValueToString(bleed.left));
 
 			let bleedTopRecto = this.createVariable("--pagedjs-bleed-right-top", CSSValueToString(bleed.top));
 			let bleedRightRecto = this.createVariable("--pagedjs-bleed-right-right", CSSValueToString(bleed.right));
@@ -1040,8 +1075,8 @@ class AtPage extends Handler {
 				heightStringLeft = `calc( ${CSSValueToString(height)} + ${CSSValueToString(bleedverso.top)} + ${CSSValueToString(bleedverso.bottom)} )`;
 			}
 
-			let pageWidthVar = this.createVariable("--pagedjs-width", CSSValueToString(width));
-			let pageHeightVar = this.createVariable("--pagedjs-height", CSSValueToString(height));
+			const pageWidthVar = this.createVariable("--pagedjs-width", CSSValueToString(width));
+			const pageHeightVar = this.createVariable("--pagedjs-height", CSSValueToString(height));
 
 			rules.push(
 				bleedTop,
@@ -1063,14 +1098,14 @@ class AtPage extends Handler {
 
 		if (marks) {
 			marks.forEach((mark) => {
-				let markDisplay = this.createVariable("--pagedjs-mark-" + mark + "-display", "block");
+				const markDisplay = this.createVariable("--pagedjs-mark-" + mark + "-display", "block");
 				rules.push(markDisplay);
 			});
 		}
 
 		// orientation variable
 		if (orientation) {
-			let oVar = this.createVariable("--pagedjs-orientation", orientation);
+			const oVar = this.createVariable("--pagedjs-orientation", orientation);
 			rules.push(oVar);
 
 			if (orientation !== "portrait") {
@@ -1081,39 +1116,39 @@ class AtPage extends Handler {
 			}
 		}
 
-		let wVar = this.createVariable("--pagedjs-width", widthString);
-		let hVar = this.createVariable("--pagedjs-height", heightString);
+		const wVar = this.createVariable("--pagedjs-width", widthString);
+		const hVar = this.createVariable("--pagedjs-height", heightString);
 
-		let wVarR = this.createVariable("--pagedjs-width-right", widthStringRight);
-		let hVarR = this.createVariable("--pagedjs-height-right", heightStringRight);
+		const wVarR = this.createVariable("--pagedjs-width-right", widthStringRight);
+		const hVarR = this.createVariable("--pagedjs-height-right", heightStringRight);
 
-		let wVarL = this.createVariable("--pagedjs-width-left", widthStringLeft);
-		let hVarL = this.createVariable("--pagedjs-height-left", heightStringLeft);
+		const wVarL = this.createVariable("--pagedjs-width-left", widthStringLeft);
+		const hVarL = this.createVariable("--pagedjs-height-left", heightStringLeft);
 
 		rules.push(wVar, hVar, wVarR, hVarR, wVarL, hVarL);
 
-		let rule = this.createRule(selectors, rules);
+		const rule = this.createRule(selectors, rules);
 
 		ast.children.appendData(rule);
 	}
 
 
-	addNotesStyles(notes, page, list, item, sheet) {
+	private addNotesStyles(notes: Record<string, csstree.Block>, page: PageModel, list: csstree.List<csstree.Rule>) {
 
 		for (const note in notes) {
-			let selectors = this.selectorsForPage(page);
+			const selectors = this.selectorsForPage(page);
 
 			selectors.insertData({
 				type: "Combinator",
 				name: " "
-			});
+			} satisfies csstree.Combinator);
 
 			selectors.insertData({
 				type: "ClassSelector",
 				name: "pagedjs_" + note + "_content"
-			});
+			} satisfies csstree.ClassSelector);
 
-			let notesRule = this.createRule(selectors, notes[note]);
+			const notesRule = this.createRule(selectors, notes[note]);
 
 			list.appendData(notesRule);
 		}
@@ -1127,133 +1162,133 @@ class AtPage extends Handler {
 		padding: 0;
 	}
 	*/
-	addRootPage(ast, size, bleed, bleedrecto, bleedverso) {
-		let { width, height, orientation, format } = size;
-		let children = new csstree.List();
-		let childrenLeft = new csstree.List();
-		let childrenRight = new csstree.List();
-		let dimensions = new csstree.List();
-		let dimensionsLeft = new csstree.List();
-		let dimensionsRight = new csstree.List();
+	private addRootPage(ast: csstree.StyleSheet, size: PageSize, bleed: Partial<Rect<Dimension>>, bleedrecto: Rect<Dimension>, bleedverso: Rect<Dimension>) {
+		const { width, height, orientation, format } = size;
+		const children = new csstree.List<csstree.CssNode>();
+		const childrenLeft = new csstree.List<csstree.CssNode>();
+		const childrenRight = new csstree.List<csstree.CssNode>();
+		const dimensions = new csstree.List<csstree.CssNode>();
+		const dimensionsLeft = new csstree.List<csstree.CssNode>();
+		const dimensionsRight = new csstree.List<csstree.CssNode>();
 
 		if (bleed) {
-			let widthCalculations = new csstree.List();
-			let heightCalculations = new csstree.List();
+			const widthCalculations = new csstree.List<csstree.CssNode>();
+			const heightCalculations = new csstree.List<csstree.CssNode>();
 
 			// width
 			widthCalculations.appendData({
 				type: "Dimension",
 				unit: width.unit,
 				value: width.value
-			});
+			} satisfies csstree.Dimension);
 
 			widthCalculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculations.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			widthCalculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculations.appendData({
 				type: "Dimension",
 				unit: bleed.left.unit,
 				value: bleed.left.value
-			});
+			} satisfies csstree.Dimension);
 
 			widthCalculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculations.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			widthCalculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculations.appendData({
 				type: "Dimension",
 				unit: bleed.right.unit,
 				value: bleed.right.value
-			});
+			} satisfies csstree.Dimension);
 
 			// height
 			heightCalculations.appendData({
 				type: "Dimension",
 				unit: height.unit,
 				value: height.value
-			});
+			} satisfies csstree.Dimension);
 
 			heightCalculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculations.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			heightCalculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculations.appendData({
 				type: "Dimension",
 				unit: bleed.top.unit,
 				value: bleed.top.value
-			});
+			} satisfies csstree.Dimension);
 
 			heightCalculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculations.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			heightCalculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculations.appendData({
 				type: "Dimension",
 				unit: bleed.bottom.unit,
 				value: bleed.bottom.value
-			});
+			} satisfies csstree.Dimension);
 
 			dimensions.appendData({
 				type: "Function",
 				name: "calc",
 				children: widthCalculations
-			});
+			} satisfies csstree.FunctionNode);
 
 			dimensions.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			dimensions.appendData({
 				type: "Function",
 				name: "calc",
 				children: heightCalculations
-			});
+			} satisfies csstree.FunctionNode);
 
 		} else if (format) {
 			dimensions.appendData({
@@ -1265,7 +1300,7 @@ class AtPage extends Handler {
 				dimensions.appendData({
 					type: "WhiteSpace",
 					value: " "
-				});
+				} satisfies csstree.WhiteSpace);
 
 				dimensions.appendData({
 					type: "Identifier",
@@ -1277,215 +1312,214 @@ class AtPage extends Handler {
 				type: "Dimension",
 				unit: width.unit,
 				value: width.value
-			});
+			} satisfies csstree.Dimension);
 
 			dimensions.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			dimensions.appendData({
 				type: "Dimension",
 				unit: height.unit,
 				value: height.value
-			});
+			} satisfies csstree.Dimension);
 		}
 
 		children.appendData({
 			type: "Declaration",
+			important: false,
 			property: "size",
-			loc: null,
 			value: {
 				type: "Value",
 				children: dimensions
 			}
-		});
+		} satisfies csstree.Declaration);
 
 		children.appendData({
 			type: "Declaration",
+			important: false,
 			property: "margin",
-			loc: null,
 			value: {
 				type: "Value",
-				children: [{
+				children: new csstree.List<csstree.CssNode>().fromArray([{
 					type: "Dimension",
 					unit: "px",
-					value: 0
-				}]
+					value: "0"
+				} satisfies csstree.Dimension])
 			}
-		});
+		} satisfies csstree.Declaration);
 
 		children.appendData({
 			type: "Declaration",
+			important: false,
 			property: "padding",
-			loc: null,
 			value: {
 				type: "Value",
-				children: [{
+				children: new csstree.List<csstree.CssNode>().fromArray([{
 					type: "Dimension",
 					unit: "px",
-					value: 0
-				}]
+					value: "0"
+				} satisfies csstree.Dimension])
 			}
-		});
+		} satisfies csstree.Declaration);
 
 		children.appendData({
 			type: "Declaration",
+			important: false,
 			property: "padding",
-			loc: null,
 			value: {
 				type: "Value",
-				children: [{
+				children: new csstree.List<csstree.CssNode>().fromArray([{
 					type: "Dimension",
 					unit: "px",
-					value: 0
-				}]
+					value: "0"
+				} satisfies csstree.Dimension])
 			}
-		});
+		} satisfies csstree.Declaration);
 
-		let rule = ast.children.createItem({
+		const rule = ast.children.createItem({
 			type: "Atrule",
 			prelude: null,
 			name: "page",
 			block: {
 				type: "Block",
-				loc: null,
-				children: children
+				children
 			}
-		});
+		} satisfies csstree.Atrule);
 
 		ast.children.append(rule);
 
 		if (bleedverso) {
-			let widthCalculationsLeft = new csstree.List();
-			let heightCalculationsLeft = new csstree.List();
+			const widthCalculationsLeft = new csstree.List<csstree.CssNode>();
+			const heightCalculationsLeft = new csstree.List<csstree.CssNode>();
 
 			// width
 			widthCalculationsLeft.appendData({
 				type: "Dimension",
 				unit: width.unit,
 				value: width.value
-			});
+			} satisfies csstree.Dimension);
 
 			widthCalculationsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculationsLeft.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			widthCalculationsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculationsLeft.appendData({
 				type: "Dimension",
 				unit: bleedverso.left.unit,
 				value: bleedverso.left.value
-			});
+			} satisfies csstree.Dimension);
 
 			widthCalculationsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculationsLeft.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			widthCalculationsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculationsLeft.appendData({
 				type: "Dimension",
 				unit: bleedverso.right.unit,
 				value: bleedverso.right.value
-			});
+			} satisfies csstree.Dimension);
 
 			// height
 			heightCalculationsLeft.appendData({
 				type: "Dimension",
 				unit: height.unit,
 				value: height.value
-			});
+			} satisfies csstree.Dimension);
 
 			heightCalculationsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculationsLeft.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			heightCalculationsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculationsLeft.appendData({
 				type: "Dimension",
 				unit: bleedverso.top.unit,
 				value: bleedverso.top.value
-			});
+			} satisfies csstree.Dimension);
 
 			heightCalculationsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculationsLeft.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			heightCalculationsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculationsLeft.appendData({
 				type: "Dimension",
 				unit: bleedverso.bottom.unit,
 				value: bleedverso.bottom.value
-			});
+			} satisfies csstree.Dimension);
 
 			dimensionsLeft.appendData({
 				type: "Function",
 				name: "calc",
 				children: widthCalculationsLeft
-			});
+			} satisfies csstree.FunctionNode);
 
 			dimensionsLeft.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			dimensionsLeft.appendData({
 				type: "Function",
 				name: "calc",
 				children: heightCalculationsLeft
-			});
+			} satisfies csstree.FunctionNode);
 
 			childrenLeft.appendData({
 				type: "Declaration",
+				important: false,
 				property: "size",
-				loc: null,
 				value: {
 					type: "Value",
 					children: dimensionsLeft
 				}
-			});
+			} satisfies csstree.Declaration);
 
-			let ruleLeft = ast.children.createItem({
+			const ruleLeft = ast.children.createItem({
 				type: "Atrule",
 				prelude: null,
 				name: "page :left",
@@ -1501,135 +1535,135 @@ class AtPage extends Handler {
 		}
 
 		if (bleedrecto) {
-			let widthCalculationsRight = new csstree.List();
-			let heightCalculationsRight = new csstree.List();
+			const widthCalculationsRight = new csstree.List<csstree.CssNode>();
+			const heightCalculationsRight = new csstree.List<csstree.CssNode>();
 
 			// width
 			widthCalculationsRight.appendData({
 				type: "Dimension",
 				unit: width.unit,
 				value: width.value
-			});
+			} satisfies csstree.Dimension);
 
 			widthCalculationsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculationsRight.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			widthCalculationsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculationsRight.appendData({
 				type: "Dimension",
 				unit: bleedrecto.left.unit,
 				value: bleedrecto.left.value
-			});
+			} satisfies csstree.Dimension);
 
 			widthCalculationsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculationsRight.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			widthCalculationsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			widthCalculationsRight.appendData({
 				type: "Dimension",
 				unit: bleedrecto.right.unit,
 				value: bleedrecto.right.value
-			});
+			} satisfies csstree.Dimension);
 
 			// height
 			heightCalculationsRight.appendData({
 				type: "Dimension",
 				unit: height.unit,
 				value: height.value
-			});
+			} satisfies csstree.Dimension);
 
 			heightCalculationsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculationsRight.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			heightCalculationsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculationsRight.appendData({
 				type: "Dimension",
 				unit: bleedrecto.top.unit,
 				value: bleedrecto.top.value
-			});
+			} satisfies csstree.Dimension);
 
 			heightCalculationsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculationsRight.appendData({
 				type: "Operator",
 				value: "+"
-			});
+			} satisfies csstree.Operator);
 
 			heightCalculationsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			heightCalculationsRight.appendData({
 				type: "Dimension",
 				unit: bleedrecto.bottom.unit,
 				value: bleedrecto.bottom.value
-			});
+			} satisfies csstree.Dimension);
 
 			dimensionsRight.appendData({
 				type: "Function",
 				name: "calc",
 				children: widthCalculationsRight
-			});
+			} satisfies csstree.FunctionNode);
 
 			dimensionsRight.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			dimensionsRight.appendData({
 				type: "Function",
 				name: "calc",
 				children: heightCalculationsRight
-			});
+			} satisfies csstree.FunctionNode);
 
 			childrenRight.appendData({
 				type: "Declaration",
+				important: false,
 				property: "size",
-				loc: null,
 				value: {
 					type: "Value",
 					children: dimensionsRight
 				}
-			});
+			} satisfies csstree.Declaration);
 
-			let ruleRight = ast.children.createItem({
+			const ruleRight = ast.children.createItem({
 				type: "Atrule",
 				prelude: null,
 				name: "page :right",
@@ -1638,18 +1672,18 @@ class AtPage extends Handler {
 					loc: null,
 					children: childrenRight
 				}
-			});
+			} satisfies csstree.Atrule);
 
 			ast.children.append(ruleRight);
 
 		}
 	}
 
-	getNth(nth) {
-		let n = nth.indexOf("n");
-		let plus = nth.indexOf("+");
-		let splitN = nth.split("n");
-		let splitP = nth.split("+");
+	private getNth(nth: string): csstree.Nth {
+		const n = nth.indexOf("n");
+		const plus = nth.indexOf("+");
+		const splitN = nth.split("n");
+		const splitP = nth.split("+");
 		let a = null;
 		let b = null;
 		if (n > -1) {
@@ -1663,131 +1697,129 @@ class AtPage extends Handler {
 
 		return {
 			type: "Nth",
-			loc: null,
 			selector: null,
 			nth: {
 				type: "AnPlusB",
-				loc: null,
-				a: a,
-				b: b
+				a,
+				b
 			}
-		};
+		} satisfies csstree.Nth;
 	}
 
-	addPageAttributes(page, start, pages) {
-		let namedPages = [start.dataset.page];
+	private addPageAttributes(page: Page, start: HTMLElement) {
+		const namedPages = [start.dataset.page];
 
-		if (namedPages && namedPages.length) {
-			for (const named of namedPages) {
-				if (!named) {
-					continue;
-				}
-				page.name = named;
-				page.element.classList.add("pagedjs_named_page");
-				page.element.classList.add("pagedjs_" + named + "_page");
+		for (const named of namedPages) {
+			if (!named) {
+				continue;
+			}
+			page.name = named;
+			// TODO: Layout has similar code, but spells "pagedjs" as "pagejs".
+			page.element.classList.add("pagedjs_named_page");
+			page.element.classList.add("pagedjs_" + named + "_page");
 
-				if (!start.dataset.splitFrom) {
-					page.element.classList.add("pagedjs_" + named + "_first_page");
-				}
+			if (!start.dataset.splitFrom) {
+				page.element.classList.add("pagedjs_" + named + "_first_page");
 			}
 		}
 	}
 
-	getStartElement(content, breakToken) {
+	private getStartElement(content: HTMLElement | DocumentFragment | undefined, breakToken: BreakToken | undefined): HTMLElement | undefined {
 		// If we have a breaktoken, we want the first node that will be added next.
-		let node = breakToken && (breakToken.overflow[0]?.node || breakToken.node);
+		const node = (breakToken?.overflow[0]?.node ?? breakToken?.node) as HTMLElement | undefined;
 
 		if (!content && !breakToken) {
-			return;
+			return undefined;
 		}
 
 		// No break
 		if (!node) {
-			return content.children[0];
+			return content.children[0] as HTMLElement | undefined;
 		}
 
 		if (breakToken && breakToken.node && breakToken.overflow[0]?.topLevel) {
-			return findElement(breakToken.node, content);
+			return findElement(breakToken.node as HTMLElement, content) as HTMLElement | undefined;
 		}
 
 		// Top level element
-		if (node.nodeType === 1 && node.parentNode.nodeType === 11) {
+		if (node.nodeType === Node.ELEMENT_NODE && node.parentNode.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
 			return node;
 		}
 
 		// Named page
-		if (node.nodeType === 1 && node.dataset.page) {
+		if (node.nodeType === Node.ELEMENT_NODE && node.dataset.page) {
 			return node;
 		}
 
 		// Get top level Named parent
-		let fragment = rebuildAncestors(node);
-		let pages = fragment.querySelectorAll("[data-page]");
+		const fragment = rebuildAncestors(node);
+		const pages = fragment.querySelectorAll("[data-page]");
 
 		if (pages.length) {
-			return pages[pages.length - 1];
+			return pages[pages.length - 1] as HTMLElement;
 		} else {
-			return fragment.children[0];
+			return fragment.children[0] as HTMLElement;
 		}
 	}
 
-	beforePageLayout(page, contents, breakToken, chunker) {
-		let start = this.getStartElement(contents, breakToken);
+	beforePageLayout(page: Page, contents: HTMLElement | DocumentFragment | undefined, breakToken: BreakToken | undefined) {
+		const start = this.getStartElement(contents, breakToken);
 		if (start) {
-			this.addPageAttributes(page, start, chunker.pages);
+			this.addPageAttributes(page, start);
 		}
 		// page.element.querySelector('.paged_area').style.color = red;
 	}
 
-	afterPageLayout(page, contents, breakToken, chunker) {
-		let thisPage = chunker.pages[chunker.pages.length - 1];
+	// TODO: this had page and contents swapped.
+	afterPageLayout(contents: HTMLElement, _page: Page, _breakToken: BreakToken | undefined, chunker: Chunker) {
+		const thisPage = chunker.pages[chunker.pages.length - 1];
 		// If only footnotes were added, attribs should be like the previous page.
-		let emptyBody = !thisPage.area.firstElementChild || !thisPage.area.firstElementChild.childElementCount || !thisPage.area.firstElementChild.firstElementChild.getBoundingClientRect().height;
-		let emptyFootnotes = !thisPage.footnotesArea.firstElementChild.childElementCount || !thisPage.footnotesArea.firstElementChild.firstElementChild.getBoundingClientRect().height;
+		const emptyBody = !thisPage.area.firstElementChild || !thisPage.area.firstElementChild.childElementCount || !thisPage.area.firstElementChild.firstElementChild.getBoundingClientRect().height;
+		const emptyFootnotes = !thisPage.footnotesArea.firstElementChild.childElementCount || !thisPage.footnotesArea.firstElementChild.firstElementChild.getBoundingClientRect().height;
 
 		if (emptyBody && !emptyFootnotes && chunker.pages.length > 1) {
 			// Start element for the previous page.
-			let prevBreakToken = chunker.pages[chunker.pages.length - 2].startToken;
-			let start = this.getStartElement(contents, prevBreakToken);
+			const prevBreakToken = chunker.pages[chunker.pages.length - 2].startToken;
+			const start = this.getStartElement(contents, prevBreakToken);
 			if (start) {
-				this.addPageAttributes(thisPage, start, chunker.pages);
+				this.addPageAttributes(thisPage, start);
 			}
 		}
 	}
 
-	finalizePage(fragment, page, breakToken, chunker) {
-		for (let m in this.marginalia) {
-			let margin = this.marginalia[m];
-			let sels = m.split(" ");
+	finalizePage(_fragment: HTMLElement, page: Page) {
+		for (const m in this.marginalia) {
+			const margin = this.marginalia[m];
+			const sels = m.split(" ");
 
-			let content;
 			if (page.element.matches(sels[0]) && margin.hasContent) {
-				content = page.element.querySelector(sels[1]);
+				const content = page.element.querySelector(sels[1]);
 				content.classList.add("hasContent");
 			}
 		}
 
 		// check center
 		["top", "bottom"].forEach((loc) => {
-			let marginGroup = page.element.querySelector(".pagedjs_margin-" + loc);
-			let center = page.element.querySelector(".pagedjs_margin-" + loc + "-center");
-			let left = page.element.querySelector(".pagedjs_margin-" + loc + "-left");
-			let right = page.element.querySelector(".pagedjs_margin-" + loc + "-right");
+			const marginGroup = page.element.querySelector<HTMLElement>(".pagedjs_margin-" + loc);
+			const center = page.element.querySelector<HTMLElement>(".pagedjs_margin-" + loc + "-center");
+			const left = page.element.querySelector<HTMLElement>(".pagedjs_margin-" + loc + "-left");
+			const right = page.element.querySelector<HTMLElement>(".pagedjs_margin-" + loc + "-right");
 
-			let centerContent = center.classList.contains("hasContent");
-			let leftContent = left.classList.contains("hasContent");
-			let rightContent = right.classList.contains("hasContent");
-			let centerWidth, leftWidth, rightWidth;
+			const centerContent = center.classList.contains("hasContent");
+			const leftContent = left.classList.contains("hasContent");
+			const rightContent = right.classList.contains("hasContent");
 
+			let leftWidth: string | undefined;
 			if (leftContent) {
 				leftWidth = window.getComputedStyle(left)["max-width"];
 			}
 
+			let rightWidth: string | undefined;
 			if (rightContent) {
 				rightWidth = window.getComputedStyle(right)["max-width"];
 			}
 
-
+			let centerWidth: string | undefined;
 			if (centerContent) {
 				centerWidth = window.getComputedStyle(center)["max-width"];
 
@@ -1802,10 +1834,10 @@ class AtPage extends Handler {
 								marginGroup.style["grid-template-columns"] = "auto auto 1fr";
 								left.style["white-space"] = "nowrap";
 								center.style["white-space"] = "nowrap";
-								let leftOuterWidth = left.offsetWidth;
-								let centerOuterWidth = center.offsetWidth;
-								let outerwidths = leftOuterWidth + centerOuterWidth;
-								let newcenterWidth = centerOuterWidth * 100 / outerwidths;
+								const leftOuterWidth = left.offsetWidth;
+								const centerOuterWidth = center.offsetWidth;
+								const outerwidths = leftOuterWidth + centerOuterWidth;
+								const newcenterWidth = centerOuterWidth * 100 / outerwidths;
 								marginGroup.style["grid-template-columns"] = "minmax(16.66%, 1fr) minmax(33%, " + newcenterWidth + "%) minmax(16.66%, 1fr)";
 								left.style["white-space"] = "normal";
 								center.style["white-space"] = "normal";
@@ -1825,11 +1857,11 @@ class AtPage extends Handler {
 									left.style["white-space"] = "nowrap";
 									center.style["white-space"] = "nowrap";
 									right.style["white-space"] = "nowrap";
-									let leftOuterWidth = left.offsetWidth;
-									let centerOuterWidth = center.offsetWidth;
-									let rightOuterWidth = right.offsetWidth;
-									let outerwidths = leftOuterWidth + centerOuterWidth + rightOuterWidth;
-									let newcenterWidth = centerOuterWidth * 100 / outerwidths;
+									const leftOuterWidth = left.offsetWidth;
+									const centerOuterWidth = center.offsetWidth;
+									const rightOuterWidth = right.offsetWidth;
+									const outerwidths = leftOuterWidth + centerOuterWidth + rightOuterWidth;
+									const newcenterWidth = centerOuterWidth * 100 / outerwidths;
 									if (newcenterWidth > 40) {
 										marginGroup.style["grid-template-columns"] = "minmax(16.66%, 1fr) minmax(33%, " + newcenterWidth + "%) minmax(16.66%, 1fr)";
 									} else {
@@ -1848,10 +1880,10 @@ class AtPage extends Handler {
 							marginGroup.style["grid-template-columns"] = "auto auto 1fr";
 							right.style["white-space"] = "nowrap";
 							center.style["white-space"] = "nowrap";
-							let rightOuterWidth = right.offsetWidth;
-							let centerOuterWidth = center.offsetWidth;
-							let outerwidths = rightOuterWidth + centerOuterWidth;
-							let newcenterWidth = centerOuterWidth * 100 / outerwidths;
+							const rightOuterWidth = right.offsetWidth;
+							const centerOuterWidth = center.offsetWidth;
+							const outerwidths = rightOuterWidth + centerOuterWidth;
+							const newcenterWidth = centerOuterWidth * 100 / outerwidths;
 							marginGroup.style["grid-template-columns"] = "minmax(16.66%, 1fr) minmax(33%, " + newcenterWidth + "%) minmax(16.66%, 1fr)";
 							right.style["white-space"] = "normal";
 							center.style["white-space"] = "normal";
@@ -1886,10 +1918,10 @@ class AtPage extends Handler {
 								marginGroup.style["grid-template-columns"] = "auto 1fr auto";
 								left.style["white-space"] = "nowrap";
 								right.style["white-space"] = "nowrap";
-								let leftOuterWidth = left.offsetWidth;
-								let rightOuterWidth = right.offsetWidth;
-								let outerwidths = leftOuterWidth + rightOuterWidth;
-								let newLeftWidth = leftOuterWidth * 100 / outerwidths;
+								const leftOuterWidth = left.offsetWidth;
+								const rightOuterWidth = right.offsetWidth;
+								const outerwidths = leftOuterWidth + rightOuterWidth;
+								const newLeftWidth = leftOuterWidth * 100 / outerwidths;
 								marginGroup.style["grid-template-columns"] = "minmax(16.66%, " + newLeftWidth + "%) 0 1fr";
 								left.style["white-space"] = "normal";
 								right.style["white-space"] = "normal";
@@ -1908,22 +1940,24 @@ class AtPage extends Handler {
 
 		// check middle
 		["left", "right"].forEach((loc) => {
-			let middle = page.element.querySelector(".pagedjs_margin-" + loc + "-middle.hasContent");
-			let marginGroup = page.element.querySelector(".pagedjs_margin-" + loc);
-			let top = page.element.querySelector(".pagedjs_margin-" + loc + "-top");
-			let bottom = page.element.querySelector(".pagedjs_margin-" + loc + "-bottom");
-			let topContent = top.classList.contains("hasContent");
-			let bottomContent = bottom.classList.contains("hasContent");
-			let middleHeight, topHeight, bottomHeight;
+			const middle = page.element.querySelector<HTMLElement>(".pagedjs_margin-" + loc + "-middle.hasContent");
+			const marginGroup = page.element.querySelector<HTMLElement>(".pagedjs_margin-" + loc);
+			const top = page.element.querySelector<HTMLElement>(".pagedjs_margin-" + loc + "-top");
+			const bottom = page.element.querySelector<HTMLElement>(".pagedjs_margin-" + loc + "-bottom");
+			const topContent = top.classList.contains("hasContent");
+			const bottomContent = bottom.classList.contains("hasContent");
 
+			let topHeight: string | undefined;
 			if (topContent) {
 				topHeight = window.getComputedStyle(top)["max-height"];
 			}
 
+			let bottomHeight: string | undefined;
 			if (bottomContent) {
 				bottomHeight = window.getComputedStyle(bottom)["max-height"];
 			}
 
+			let middleHeight: string | undefined;
 			if (middle) {
 				middleHeight = window.getComputedStyle(middle)["max-height"];
 
@@ -2000,28 +2034,25 @@ class AtPage extends Handler {
 
 	// CSS Tree Helpers
 
-	selectorsForPage(page) {
-		let nthlist;
-		let nth;
-
-		let selectors = new csstree.List();
+	private selectorsForPage(page: PageModel) {
+		const selectors = new csstree.List<csstree.CssNode>();
 
 		selectors.insertData({
 			type: "ClassSelector",
 			name: "pagedjs_page"
-		});
+		} satisfies csstree.ClassSelector);
 
 		// Named page
 		if (page.name) {
 			selectors.insertData({
 				type: "ClassSelector",
 				name: "pagedjs_named_page"
-			});
+			} satisfies csstree.ClassSelector);
 
 			selectors.insertData({
 				type: "ClassSelector",
 				name: "pagedjs_" + page.name + "_page"
-			});
+			} satisfies csstree.ClassSelector);
 		}
 
 		// PsuedoSelector
@@ -2029,20 +2060,20 @@ class AtPage extends Handler {
 			selectors.insertData({
 				type: "ClassSelector",
 				name: "pagedjs_" + page.psuedo + "_page"
-			});
+			} satisfies csstree.ClassSelector);
 		}
 
 		if (page.name && page.psuedo === "first") {
 			selectors.insertData({
 				type: "ClassSelector",
 				name: "pagedjs_" + page.name + "_" + page.psuedo + "_page"
-			});
+			} satisfies csstree.ClassSelector);
 		}
 
 		// Nth
 		if (page.nth) {
-			nthlist = new csstree.List();
-			nth = this.getNth(page.nth);
+			const nthlist = new csstree.List<csstree.Nth>();
+			const nth = this.getNth(page.nth);
 
 			nthlist.insertData(nth);
 
@@ -2050,136 +2081,107 @@ class AtPage extends Handler {
 				type: "PseudoClassSelector",
 				name: "nth-of-type",
 				children: nthlist
-			});
+			} satisfies csstree.PseudoClassSelector);
 		}
 
 		return selectors;
 	}
 
-	selectorsForPageMargin(page, margin) {
-		let selectors = this.selectorsForPage(page);
+	private selectorsForPageMargin(page: PageModel, margin: string) {
+		const selectors = this.selectorsForPage(page);
 
 		selectors.insertData({
 			type: "Combinator",
 			name: " "
-		});
+		} satisfies csstree.Combinator);
 
 		selectors.insertData({
 			type: "ClassSelector",
 			name: "pagedjs_margin-" + margin
-		});
+		} satisfies csstree.ClassSelector);
 
 		return selectors;
 	}
 
-	createDeclaration(property, value, important) {
-		let children = new csstree.List();
+	private createDeclaration(property: string, value: string, important: boolean): csstree.Declaration {
+		const children = new csstree.List<csstree.CssNode>();
 
 		children.insertData({
 			type: "Identifier",
-			loc: null,
 			name: value
-		});
+		} satisfies csstree.Identifier);
 
 		return {
 			type: "Declaration",
-			loc: null,
-			important: important,
-			property: property,
+			important,
+			property,
 			value: {
 				type: "Value",
-				loc: null,
-				children: children
+				children
 			}
 		};
 	}
 
-	createVariable(property, value) {
+	private createVariable(property: string, value: string): csstree.Declaration {
 		return {
 			type: "Declaration",
-			loc: null,
+			important: false,
 			property: property,
 			value: {
 				type: "Raw",
-				value: value
+				value
 			}
 		};
 	}
 
-	createCalculatedDimension(property, items, important, operator = "+") {
-		let children = new csstree.List();
-		let calculations = new csstree.List();
+	private createCalculatedDimension(property: string, items: csstree.Dimension[], important: boolean, operator = "+") {
+		const children = new csstree.List<csstree.CssNode>();
+		const calculations = new csstree.List<csstree.CssNode>();
 
 		items.forEach((item, index) => {
 			calculations.appendData({
 				type: "Dimension",
 				unit: item.unit,
 				value: item.value
-			});
+			} satisfies csstree.Dimension);
 
 			calculations.appendData({
 				type: "WhiteSpace",
 				value: " "
-			});
+			} satisfies csstree.WhiteSpace);
 
 			if (index + 1 < items.length) {
 				calculations.appendData({
 					type: "Operator",
 					value: operator
-				});
+				} satisfies csstree.Operator);
 
 				calculations.appendData({
 					type: "WhiteSpace",
 					value: " "
-				});
+				} satisfies csstree.WhiteSpace);
 			}
 		});
 
 		children.insertData({
 			type: "Function",
-			loc: null,
 			name: "calc",
 			children: calculations
-		});
+		} satisfies csstree.FunctionNode);
 
 		return {
 			type: "Declaration",
-			loc: null,
 			important: important,
 			property: property,
 			value: {
 				type: "Value",
-				loc: null,
-				children: children
+				children
 			}
-		};
+		} satisfies csstree.Declaration;
 	}
 
-	createDimension(property, cssValue, important) {
-		let children = new csstree.List();
-
-		children.insertData({
-			type: "Dimension",
-			loc: null,
-			value: cssValue.value,
-			unit: cssValue.unit
-		});
-
-		return {
-			type: "Declaration",
-			loc: null,
-			important: important,
-			property: property,
-			value: {
-				type: "Value",
-				loc: null,
-				children: children
-			}
-		};
-	}
-
-	createBlock(declarations) {
-		let block = new csstree.List();
+	private createBlock(declarations: csstree.CssNode[]): csstree.Block {
+		const block = new csstree.List<csstree.CssNode>();
 
 		declarations.forEach((declaration) => {
 			block.insertData(declaration);
@@ -2187,17 +2189,16 @@ class AtPage extends Handler {
 
 		return {
 			type: "Block",
-			loc: null,
 			children: block
 		};
 	}
 
-	createRule(selectors, block) {
-		let selectorList = new csstree.List();
+	private createRule(selectors: csstree.List<csstree.CssNode>, block: csstree.Block | csstree.Declaration[]): csstree.Rule {
+		const selectorList = new csstree.List<csstree.Selector>();
 		selectorList.insertData({
 			type: "Selector",
 			children: selectors
-		});
+		} satisfies csstree.Selector);
 
 		if (Array.isArray(block)) {
 			block = this.createBlock(block);
@@ -2209,7 +2210,7 @@ class AtPage extends Handler {
 				type: "SelectorList",
 				children: selectorList
 			},
-			block: block
+			block
 		};
 	}
 
