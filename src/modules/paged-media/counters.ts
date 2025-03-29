@@ -1,23 +1,42 @@
-import Handler from "../handler";
 import csstree from "css-tree";
 
-class Counters extends Handler {
-	constructor(chunker, polisher, caller) {
+import Handler from "../handler";
+import type { HooksInterface } from "../handler";
+import type Chunker from "../../chunker/chunker";
+import type Polisher from "../../polisher/polisher";
+import type { RuleContext } from "../../polisher/sheet";
+import type { HandlerCaller, NoHooks } from "../../utils/handlers";
+
+interface CounterChange {
+	selector: string;
+	number: string | number;
+}
+
+interface Counter {
+	name: string;
+	increments: Record<string, CounterChange>;
+	resets: Record<string, CounterChange>;
+}
+
+class Counters extends Handler implements HooksInterface<Chunker["hooks"] & Polisher["hooks"]> {
+	private readonly styleSheet: CSSStyleSheet;
+	private readonly counters: Record<string, Counter> = {};
+	private readonly resetCountersMap = new Map<string, string>();
+
+	public constructor(chunker: Chunker, polisher: Polisher, caller: HandlerCaller<NoHooks>) {
 		super(chunker, polisher, caller);
 
 		this.styleSheet = polisher.styleSheet;
-		this.counters = {};
-		this.resetCountersMap = new Map();
 	}
 
-	onDeclaration(declaration, dItem, dList, rule) {
-		let property = declaration.property;
+	onDeclaration(declaration: csstree.Declaration, dItem: csstree.ListItem<csstree.CssNode>, dList: csstree.List<csstree.CssNode>, rule: RuleContext) {
+		const property = declaration.property;
 
 		if (property === "counter-increment") {
 			this.handleIncrement(declaration, rule);
 			// clean up empty declaration
 			let hasProperities = false;
-			declaration.value.children.forEach((data) => {
+			(declaration.value as csstree.Value).children.forEach((data) => {
 				if (data.type && data.type !== "WhiteSpace") {
 					hasProperities = true;
 				}
@@ -29,7 +48,7 @@ class Counters extends Handler {
 			this.handleReset(declaration, rule);
 			// clean up empty declaration
 			let hasProperities = false;
-			declaration.value.children.forEach((data) => {
+			(declaration.value as csstree.Value).children.forEach((data) => {
 				if (data.type && data.type !== "WhiteSpace") {
 					hasProperities = true;
 				}
@@ -40,18 +59,18 @@ class Counters extends Handler {
 		}
 	}
 
-	afterParsed(parsed) {
+	afterParsed(parsed: HTMLElement | DocumentFragment) {
 		this.processCounters(parsed, this.counters);
 		this.scopeCounters(this.counters);
 	}
 
-	addCounter(name) {
+	private addCounter(name: string) {
 		if (name in this.counters) {
 			return this.counters[name];
 		}
 
 		this.counters[name] = {
-			name: name,
+			name,
 			increments: {},
 			resets: {}
 		};
@@ -59,36 +78,39 @@ class Counters extends Handler {
 		return this.counters[name];
 	}
 
-	handleIncrement(declaration, rule) {
-		let increments = [];
-		let children = declaration.value.children;
+	private handleIncrement(declaration: csstree.Declaration, rule: RuleContext) {
+		const increments: CounterChange[] = [];
+		const children = (declaration.value as csstree.Value).children;
 
 		children.forEach((data, item) => {
 			if (data.type && data.type === "Identifier") {
-				let name = data.name;
+				const name = data.name;
 
 				if (name === "page" || name.indexOf("target-counter-") === 0) {
 					return;
 				}
 
-				let whitespace, number, value;
+				let whitespace: csstree.ListItem<csstree.CssNode> | undefined;
 				if (item.next && item.next.data.type === "WhiteSpace") {
 					whitespace = item.next;
 				}
+
+				let number: csstree.ListItem<csstree.NumberNode> | undefined;
+				let value: number | undefined;
 				if (whitespace && whitespace.next && whitespace.next.data.type === "Number") {
-					number = whitespace.next;
+					number = whitespace.next as csstree.ListItem<csstree.NumberNode>;
 					value = parseInt(number.data.value);
 				}
 
-				let selector = csstree.generate(rule.ruleNode.prelude);
+				const selector = csstree.generate(rule.ruleNode.prelude);
 
-				let counter;
+				let counter: Counter | undefined;
 				if (!(name in this.counters)) {
 					counter = this.addCounter(name);
 				} else {
 					counter = this.counters[name];
 				}
-				let increment = {
+				const increment = {
 					selector: selector,
 					number: value || 1
 				};
@@ -105,25 +127,28 @@ class Counters extends Handler {
 				}
 			}
 		});
-		
+
 		return increments;
 	}
 
-	handleReset(declaration, rule) {
-		let children = declaration.value.children;
+	private handleReset(declaration: csstree.Declaration, rule: RuleContext) {
+		const children = (declaration.value as csstree.Value).children;
 
 		children.forEach((data, item) => {
 			if (data.type && data.type === "Identifier") {
-				let name = data.name;
-				let whitespace, number, value;
+				const name = data.name;
+				let whitespace: csstree.ListItem<csstree.CssNode> | undefined;
 				if (item.next && item.next.data.type === "WhiteSpace") {
 					whitespace = item.next;
 				}
+
+				let number: csstree.ListItem<csstree.CssNode> | undefined;
+				let value: string | number | undefined;
 				if (whitespace && whitespace.next) {
 					if (whitespace.next.data.type === "Number") {
 						// The counter reset value is specified using a number. E.g. counter-reset: c2 5;
 						number = whitespace.next;
-						value = parseInt(number.data.value);
+						value = parseInt((number.data as csstree.NumberNode).value);
 					} else if (whitespace.next.data.type === "Function" && whitespace.next.data.name === "var") {
 						// The counter reset value is specified using a CSS variable (custom property).
 						// E.g. counter-reset: c2 var(--my-variable);
@@ -131,14 +156,14 @@ class Counters extends Handler {
 						number = whitespace.next;
 						// Use the variable name (e.g. '--my-variable') as value for now. The actual value is resolved later by the
 						// processCounterResets function.
-						value = whitespace.next.data.children.head.data.name;
+						// TODO: this used children.head, which doesn't exist.
+						value = (whitespace.next.data.children.first() as csstree.Identifier).name;
 					}
 				}
 
-				let counter;
-				let selector;
-				let prelude = rule.ruleNode.prelude;
+				const prelude = rule.ruleNode.prelude;
 
+				let selector: string | undefined;
 				if (rule.ruleNode.type === "Atrule" && rule.ruleNode.name === "page") {
 					selector = ".pagedjs_page";
 				} else {
@@ -146,16 +171,17 @@ class Counters extends Handler {
 				}
 
 				if (name === "footnote") {
-					this.addFootnoteMarkerCounter(declaration.value.children);
+					this.addFootnoteMarkerCounter((declaration.value as csstree.Value).children);
 				}
 
+				let counter: Counter | undefined;
 				if (!(name in this.counters)) {
 					counter = this.addCounter(name);
 				} else {
 					counter = this.counters[name];
 				}
 
-				let reset = {
+				const reset = {
 					selector: selector,
 					number: value || 0
 				};
@@ -176,10 +202,9 @@ class Counters extends Handler {
 		});
 	}
 
-	processCounters(parsed, counters) {
-		let counter;
-		for (let c in counters) {
-			counter = this.counters[c];
+	private processCounters(parsed: HTMLElement | DocumentFragment, counters: Record<string, Counter>) {
+		for (const c in counters) {
+			const counter = this.counters[c];
 			this.processCounterIncrements(parsed, counter);
 			this.processCounterResets(parsed, counter);
 			if (c !== "page") {
@@ -188,10 +213,10 @@ class Counters extends Handler {
 		}
 	}
 
-	scopeCounters(counters) {
-		let countersArray = [];
-		for (let c in counters) {
-			if(c !== "page") {
+	private scopeCounters(counters: Record<string, Counter>) {
+		const countersArray = [];
+		for (const c in counters) {
+			if (c !== "page") {
 				countersArray.push(`${counters[c].name} 0`);
 			}
 		}
@@ -199,19 +224,17 @@ class Counters extends Handler {
 		this.insertRule(`.pagedjs_pages { counter-reset: ${countersArray.join(" ")} page 0 pages var(--pagedjs-page-count) footnote var(--pagedjs-footnotes-count) footnote-marker var(--pagedjs-footnotes-count)}`);
 	}
 
-	insertRule(rule) {
+	private insertRule(rule: string) {
 		this.styleSheet.insertRule(rule, this.styleSheet.cssRules.length);
 	}
 
-	processCounterIncrements(parsed, counter) {
-		let increment;
-		for (let inc in counter.increments) {
-			increment = counter.increments[inc];
+	private processCounterIncrements(parsed: HTMLElement | DocumentFragment, counter: Counter) {
+		for (const increment of Object.values(counter.increments)) {
 			// Find elements for increments
-			let incrementElements = parsed.querySelectorAll(increment.selector);
+			const incrementElements = parsed.querySelectorAll(increment.selector);
 			// Add counter data
 			for (let i = 0; i < incrementElements.length; i++) {
-				incrementElements[i].setAttribute("data-counter-"+ counter.name +"-increment", increment.number);
+				incrementElements[i].setAttribute("data-counter-"+ counter.name +"-increment", String(increment.number));
 				if (incrementElements[i].getAttribute("data-counter-increment")) {
 					incrementElements[i].setAttribute("data-counter-increment", incrementElements[i].getAttribute("data-counter-increment") + " " + counter.name);
 				} else {
@@ -221,14 +244,12 @@ class Counters extends Handler {
 		}
 	}
 
-	processCounterResets(parsed, counter) {
-		let reset;
-		for (let r in counter.resets) {
-			reset = counter.resets[r];
+	private processCounterResets(parsed: HTMLElement | DocumentFragment, counter: Counter) {
+		for (const reset of Object.values(counter.resets)) {
 			// Find elements for resets
-			let resetElements = parsed.querySelectorAll(reset.selector);
+			const resetElements = parsed.querySelectorAll<HTMLElement>(reset.selector);
 			// Add counter data
-			for (var i = 0; i < resetElements.length; i++) {
+			for (let i = 0; i < resetElements.length; i++) {
 				let value = reset.number;
 				if (typeof value === "string" && value.startsWith("--")) {
 					// The value is specified using a CSS variable (custom property).
@@ -241,7 +262,7 @@ class Counters extends Handler {
 					// but for now using the inline style is enough for us.
 					value = resetElements[i].style.getPropertyValue(value) || 0;
 				}
-				resetElements[i].setAttribute("data-counter-"+ counter.name +"-reset", value);
+				resetElements[i].setAttribute("data-counter-"+ counter.name +"-reset", String(value));
 				if (resetElements[i].getAttribute("data-counter-reset")) {
 					resetElements[i].setAttribute("data-counter-reset", resetElements[i].getAttribute("data-counter-reset") + " " + counter.name);
 				} else {
@@ -251,32 +272,25 @@ class Counters extends Handler {
 		}
 	}
 
-	addCounterValues(parsed, counter) {
-		let counterName = counter.name;
+	private addCounterValues(parsed: HTMLElement | DocumentFragment, counter: Counter) {
+		const counterName = counter.name;
 
 		if (counterName === "page" || counterName === "footnote") {
 			return;
 		}
 
-		let elements = parsed.querySelectorAll("[data-counter-"+ counterName +"-reset], [data-counter-"+ counterName +"-increment]");
-
+		const elements = parsed.querySelectorAll<HTMLElement>("[data-counter-"+ counterName +"-reset], [data-counter-"+ counterName +"-increment]");
 		let count = 0;
-		let element;
-		let increment, reset;
-		let resetValue, incrementValue, resetDelta;
-		let incrementArray;
 
-		for (let i = 0; i < elements.length; i++) {
-			element = elements[i];
-			resetDelta = 0;
-			incrementArray = [];
+		for (const element of elements) {
+			const incrementArray = [];
 
 			if (element.hasAttribute("data-counter-"+ counterName +"-reset")) {
-				reset = element.getAttribute("data-counter-"+ counterName +"-reset");
-				resetValue = parseInt(reset);
+				const reset = element.getAttribute("data-counter-"+ counterName +"-reset");
+				const resetValue = parseInt(reset);
 
 				// Use negative increment value inplace of reset
-				resetDelta = resetValue - count;
+				const resetDelta = resetValue - count;
 				incrementArray.push(`${counterName} ${resetDelta}`);
 
 				count = resetValue;
@@ -284,12 +298,12 @@ class Counters extends Handler {
 
 			if (element.hasAttribute("data-counter-"+ counterName +"-increment")) {
 
-				increment = element.getAttribute("data-counter-"+ counterName +"-increment");
-				incrementValue = parseInt(increment);
+				const increment = element.getAttribute("data-counter-"+ counterName +"-increment");
+				const incrementValue = parseInt(increment);
 
 				count += incrementValue;
 
-				element.setAttribute("data-counter-"+counterName+"-value", count);
+				element.setAttribute("data-counter-"+counterName+"-value", String(count));
 
 				incrementArray.push(`${counterName} ${incrementValue}`);
 			}
@@ -301,54 +315,58 @@ class Counters extends Handler {
 		}
 	}
 
-	addFootnoteMarkerCounter(list) {
-		let markers = [];
-		csstree.walk(list, {
+	private addFootnoteMarkerCounter(list: csstree.List<csstree.CssNode>) {
+		const markers = [];
+		// TODO: this was trying to walk `list` directly`.
+		list.forEach(node => csstree.walk(node, {
 			visit: "Identifier",
-			enter: (identNode, iItem, iList) => {
+			enter: (identNode) => {
 				markers.push(identNode.name);
 			}
-		});
+		}));
 
 		// Already added
-		if (markers.includes("footnote-maker")) {
+		// TODO: this had a spelling error: "footnote-maker"
+		if (markers.includes("footnote-marker")) {
 			return;
 		}
 
 		list.insertData({
 			type: "WhiteSpace",
 			value: " "
-		});
+		} satisfies csstree.WhiteSpace);
 
 		list.insertData({
 			type: "Identifier",
 			name: "footnote-marker"
-		});
+		} satisfies csstree.Identifier);
 
 		list.insertData({
 			type: "WhiteSpace",
 			value: " "
-		});
+		} satisfies csstree.WhiteSpace);
 
 		list.insertData({
 			type: "Number",
-			value: 0
-		});
+			// TODO: this was a number.
+			value: "0"
+		} satisfies csstree.NumberNode);
 	}
 
-	incrementCounterForElement(element, incrementArray) {
+	private incrementCounterForElement(element: HTMLElement, incrementArray: string[]) {
 		if (!element || !incrementArray || incrementArray.length === 0) return;
 
 		const ref = element.dataset.ref;
-		const increments = Array.from(this.styleSheet.cssRules).filter((rule) => {
+		const increments = Array.from(this.styleSheet.cssRules).filter((rule: CSSStyleRule) => {
 			return rule.selectorText === `[data-ref="${element.dataset.ref}"]:not([data-split-from])`
 						 && rule.style[0] === "counter-increment";
-		}).map(rule => rule.style.counterIncrement);
+		}).map((rule: CSSStyleRule) => rule.style.counterIncrement);
 
 		// Merge the current increments by summing the values because we generate both a decrement and an increment when the
 		// element resets and increments the counter at the same time. E.g. ['c1 -7', 'c1 1'] should lead to 'c1 -6'.
-		increments.push(this.mergeIncrements(incrementArray,
-			(prev, next) => (parseInt(prev) || 0) + (parseInt(next) || 0)));
+		increments.push(this.mergeIncrements(
+			incrementArray,
+			(prev, next) => String((parseInt(prev) || 0) + (parseInt(next) || 0))));
 
 		// Keep the last value for each counter when merging with the previous increments. E.g. ['c1 -7 c2 3', 'c1 1']
 		// should lead to 'c1 1 c2 3'.
@@ -359,15 +377,15 @@ class Counters extends Handler {
 	/**
 	 * Merge multiple values of a counter-increment CSS rule, using the specified operator.
 	 *
-	 * @param {Array} incrementArray the values to merge, e.g. ['c1 1', 'c1 -7 c2 1']
-	 * @param {Function} operator the function used to merge counter values (e.g. keep the last value of a counter or sum
+	 * @param incrementArray the values to merge, e.g. ['c1 1', 'c1 -7 c2 1']
+	 * @param operator the function used to merge counter values (e.g. keep the last value of a counter or sum
 	 *					the counter values)
-	 * @return {string} the merged value of the counter-increment CSS rule
+	 * @return the merged value of the counter-increment CSS rule
 	 */
-	mergeIncrements(incrementArray, operator) {
-		const increments = {};
+	private mergeIncrements(incrementArray: string[], operator: (a: string, b: string) => string) {
+		const increments: Record<string, string> = {};
 		incrementArray.forEach(increment => {
-			let values = increment.split(" ");
+			const values = increment.split(" ");
 			for (let i = 0; i < values.length; i+=2) {
 				increments[values[i]] = operator(increments[values[i]], values[i + 1]);
 			}
@@ -376,10 +394,10 @@ class Counters extends Handler {
 		return Object.entries(increments).map(([key, value]) => `${key} ${value}`).join(" ");
 	}
 
-	afterPageLayout(pageElement, page) {
-		let resets = [];
+	afterPageLayout(pageElement: HTMLElement) {
+		const resets: string[] = [];
 
-		let pgreset = pageElement.querySelectorAll("[data-counter-page-reset]:not([data-split-from])");
+		const pgreset = pageElement.querySelectorAll<HTMLElement>("[data-counter-page-reset]:not([data-split-from])");
 		pgreset.forEach((reset) => {
 			const ref = reset.dataset && reset.dataset.ref;
 			if (ref && this.resetCountersMap.has(ref)) {
@@ -388,14 +406,14 @@ class Counters extends Handler {
 				if (ref) {
 					this.resetCountersMap.set(ref, "");
 				}
-				let value = reset.dataset.counterPageReset;
+				const value = reset.dataset.counterPageReset;
 				resets.push(`page ${value}`);
 			}
 		});
 
-		let notereset = pageElement.querySelectorAll("[data-counter-footnote-reset]:not([data-split-from])");
+		const notereset = pageElement.querySelectorAll<HTMLElement>("[data-counter-footnote-reset]:not([data-split-from])");
 		notereset.forEach((reset) => {
-			let value = reset.dataset.counterFootnoteReset;
+			const value = reset.dataset.counterFootnoteReset;
 			resets.push(`footnote ${value}`);
 			resets.push(`footnote-marker ${value}`);
 		});
