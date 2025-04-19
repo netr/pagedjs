@@ -5,6 +5,7 @@ import ContentParser from "./parser";
 import { EventEmitter } from "../utils/event-emitter";
 import Hook from "../utils/hook";
 import Queue from "../utils/queue";
+import { debugLog } from "../utils/debug";
 
 const MAX_PAGES = null;
 const MAX_LAYOUTS = false;
@@ -135,6 +136,12 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 	private readonly charsPerBreak: number[] = [];
 	private source?: HTMLElement | DocumentFragment;
 	private breakToken?: BreakToken;
+	private isDebugEnabled = true; // Set to true to enable debug logs
+
+	// Custom debug method to avoid ESLint console warnings
+	private debug(message: string, data?: any): void {
+		// eslint-disable-next-line no-console
+		if (this.isDebugEnabled) console.log(`🔍 DEBUG - ${message}`, data ? data : '');
 
 	public pages: Page[] = [];
 	public pagesArea: HTMLDivElement | undefined;
@@ -233,52 +240,108 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 	}
 
 	public async flow(content: HTMLElement | DocumentFragment | undefined, renderTo: Element | undefined) {
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Starting flow", { contentExists: !!content, renderToExists: !!renderTo });
+		
 		await this.hooks.beforeParsed.trigger(content, this);
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: After beforeParsed hook");
 
 		if (content) {
+			// eslint-disable-next-line no-console
+			console.log("📝 FLOW: Disabling rules for content");
 			this.recordRulesToDisable();
 			this.disableRules(content);
 		}
 
 		const parsed = new ContentParser(content).dom;
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Content parsed", { 
+			parsedExists: !!parsed, 
+			childNodeCount: parsed?.childNodes?.length 
+		});
 
 		this.hooks.filter.triggerSync(parsed);
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: After filter hook");
 
 		this.source = parsed;
 		this.breakToken = undefined;
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Source set, breakToken reset");
 
 		if (this.pagesArea && this.pageTemplate) {
+			// eslint-disable-next-line no-console
+			console.log("📝 FLOW: Clearing queue and removing pages");
 			this.q.clear();
 			this.removePages();
 		} else {
+			// eslint-disable-next-line no-console
+			console.log("📝 FLOW: Setting up pagesArea and pageTemplate");
 			this.setup(renderTo);
 		}
 
 		this.emit("rendering", parsed);
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Emitted 'rendering' event");
 
 		await this.hooks.afterParsed.trigger(parsed, this);
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: After afterParsed hook");
 
 		await this.loadFonts();
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Fonts loaded");
 
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Starting initial render");
 		let rendered = await this.render(parsed, this.breakToken);
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Initial render complete", { 
+			canceled: rendered.canceled, 
+			done: rendered.done,
+			totalPages: this.total
+		});
+		
+		let retryCount = 0;
 		while (rendered.canceled) {
+			retryCount++;
+			// eslint-disable-next-line no-console
+			console.log("📝 FLOW: Render was canceled, restarting", { retryCount });
 			this.start();
 			rendered = await this.render(parsed, this.breakToken);
+			// eslint-disable-next-line no-console
+			console.log("📝 FLOW: Re-render complete", { 
+				canceled: rendered.canceled, 
+				done: rendered.done,
+				totalPages: this.total,
+				retryCount
+			});
 		}
 
 		this.rendered = true;
 		this.pagesArea.style.setProperty("--pagedjs-page-count", String(this.total));
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Flow complete, final pages:", this.total);
 
 		await this.hooks.afterRendered.trigger(this.pages, this);
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: After afterRendered hook");
 
 		this.emit("rendered", this.pages);
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Emitted 'rendered' event");
 
 		this.enableRules(content);
+		// eslint-disable-next-line no-console
+		console.log("📝 FLOW: Rules re-enabled");
 
 		return this;
 	}
 
 	private async render(parsed: HTMLElement | DocumentFragment, startAt: BreakToken | undefined) {
+		// eslint-disable-next-line no-console
+		console.log("📝 RENDER: Starting render process", { hasStartToken: !!startAt });
 		const renderer = this.layout(parsed, startAt);
 
 		let done = false;
@@ -286,17 +349,34 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 
 		let loops = 0;
 		while (!done) {
+			// eslint-disable-next-line no-console
+			console.log("📝 RENDER: Loop iteration", { loops, total: this.total });
 			result = await this.q.enqueue(() => this.renderAsync(renderer));
+			// eslint-disable-next-line no-console
+			console.log("📝 RENDER: Got result from renderAsync", { 
+				done: result.done, 
+				canceled: result.canceled,
+				hasValue: !!result.value,
+				valueType: result.value === false ? "false" : (result.value ? "BreakToken" : "undefined")
+			});
 			done = result.done;
 			if(MAX_LAYOUTS) {
 				loops += 1;
 				if (loops >= MAX_LAYOUTS) {
+					// eslint-disable-next-line no-console
+					console.log("📝 RENDER: Reached MAX_LAYOUTS, stopping at", loops);
 					this.stop();
 					break;
 				}
 			}
 		}
 
+		// eslint-disable-next-line no-console
+		console.log("📝 RENDER: Render complete", { 
+			done: result.done, 
+			canceled: result.canceled,
+			totalPages: this.total
+		});
 		return result;
 	}
 
@@ -310,11 +390,28 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 	}
 
 	private async renderAsync(renderer: AsyncIterator<BreakToken | false>) {
+		// eslint-disable-next-line no-console
+		console.log("📝 RENDER_ASYNC: Starting renderAsync");
+		
 		if (this.stopped) {
+			// eslint-disable-next-line no-console
+			console.log("📝 RENDER_ASYNC: Stopped flag is true, canceling");
 			return { done: true, value: undefined, canceled: true };
 		}
+		
+		// eslint-disable-next-line no-console
+		console.log("📝 RENDER_ASYNC: Awaiting renderer.next()");
 		const result = await renderer.next();
+		// eslint-disable-next-line no-console
+		console.log("📝 RENDER_ASYNC: Got result from renderer", { 
+			done: result.done, 
+			hasValue: !!result.value,
+			valueType: result.value === false ? "false" : (result.value ? "BreakToken" : "undefined")
+		});
+		
 		if (this.stopped) {
+			// eslint-disable-next-line no-console
+			console.log("📝 RENDER_ASYNC: Stopped flag set during execution, canceling");
 			return { done: true, value: undefined, canceled: true };
 		} else {
 			return result;
@@ -322,12 +419,21 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 	}
 
 	private async handleBreaks(node: Text | HTMLElement | DocumentFragment, force?: boolean) {
+		// eslint-disable-next-line no-console
+		console.log("📝 HANDLE_BREAKS: Starting", { 
+			nodeType: node ? (node.nodeType || "unknown") : "no node", 
+			force: !!force,
+			currentPage: this.total + 1
+		});
+		
 		const currentPage = this.total + 1;
 		const currentPosition = currentPage % 2 === 0 ? "left" : "right";
 		// TODO: Recto and Verso should reverse for rtl languages
 		const currentSide = currentPage % 2 === 0 ? "verso" : "recto";
 
 		if (currentPage === 1) {
+			// eslint-disable-next-line no-console
+			console.log("📝 HANDLE_BREAKS: First page, no breaks needed");
 			return;
 		}
 
@@ -336,6 +442,8 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 				"dataset" in node &&
 				typeof node.dataset.previousBreakAfter !== "undefined") {
 			previousBreakAfter = node.dataset.previousBreakAfter;
+			// eslint-disable-next-line no-console
+			console.log("📝 HANDLE_BREAKS: Found previousBreakAfter", { previousBreakAfter });
 		}
 
 		let breakBefore: string | undefined;
@@ -343,45 +451,73 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 				"dataset" in node &&
 				typeof node.dataset.breakBefore !== "undefined") {
 			breakBefore = node.dataset.breakBefore;
+			// eslint-disable-next-line no-console
+			console.log("📝 HANDLE_BREAKS: Found breakBefore", { breakBefore });
 		}
 
 		let page: Page | undefined;
+		let breakReason = "none";
+		
 		if (force) {
+			breakReason = "force=true";
 			page = this.addPage(true);
 		} else if( previousBreakAfter &&
 				(previousBreakAfter === "left" || previousBreakAfter === "right") &&
 				previousBreakAfter !== currentPosition) {
+			breakReason = "previousBreakAfter position mismatch";
 			page = this.addPage(true);
 		} else if( previousBreakAfter &&
 				(previousBreakAfter === "verso" || previousBreakAfter === "recto") &&
 				previousBreakAfter !== currentSide) {
+			breakReason = "previousBreakAfter side mismatch";
 			page = this.addPage(true);
 		} else if( breakBefore &&
 				(breakBefore === "left" || breakBefore === "right") &&
 				breakBefore !== currentPosition) {
+			breakReason = "breakBefore position mismatch";
 			page = this.addPage(true);
 		} else if( breakBefore &&
 				(breakBefore === "verso" || breakBefore === "recto") &&
 				breakBefore !== currentSide) {
+			breakReason = "breakBefore side mismatch";
 			page = this.addPage(true);
 		}
 
+		// eslint-disable-next-line no-console
+		console.log("📝 HANDLE_BREAKS: Break decision", { 
+			addPage: !!page, 
+			breakReason,
+			totalPages: this.total
+		});
+
 		if (page) {
+			// eslint-disable-next-line no-console
+			console.log("📝 HANDLE_BREAKS: Processing added page", { pageId: page.id });
 			await this.hooks.beforePageLayout.trigger(page, undefined, undefined, this);
 			this.emit("page", page);
 			// await this.hooks.layout.trigger(page.element, page, undefined, this);
 			await this.hooks.afterPageLayout.trigger(page.element, page, undefined, this);
 			await this.hooks.finalizePage.trigger(page.element, page, undefined, this);
 			this.emit("renderedPage", page);
+			// eslint-disable-next-line no-console
+			console.log("📝 HANDLE_BREAKS: Page processed", { pageId: page.id });
 		}
 	}
 
 	private async *layout(content: HTMLElement | DocumentFragment, startAt: BreakToken | undefined) {
+		// eslint-disable-next-line no-console
+		console.log("📝 LAYOUT: Starting layout generator", { hasStartAt: !!startAt, totalPages: this.total });
 		let breakToken: BreakToken | undefined | false = startAt ?? false;
 		let page: Page | undefined;
 		let prevPage: HTMLElement | undefined;
 
 		while (breakToken !== undefined && (MAX_PAGES ? this.total < MAX_PAGES : true)) {
+			// eslint-disable-next-line no-console
+			console.log("📝 LAYOUT: New layout iteration", { 
+				totalPages: this.total,
+				hasBreakToken: !!breakToken, 
+				breakTokenType: breakToken === false ? "false" : (breakToken ? "BreakToken" : "undefined")
+			});
 
 			let range: Range | undefined;
 			if (page && page.area.firstElementChild && page.area.firstElementChild.childElementCount) {
@@ -395,36 +531,68 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 			const emptyPage = emptyBody && emptyFootnotes;
 			const prevNumPages = this.total;
 
+			// eslint-disable-next-line no-console
+			console.log("📝 LAYOUT: Page state check", { 
+				emptyBody, 
+				emptyFootnotes, 
+				emptyPage, 
+				prevNumPages,
+				shouldProcessBreaks: !page || !emptyPage
+			});
+
 			if (!page || !emptyPage) {
 				if (breakToken) {
 					if (breakToken.overflow.length && breakToken.overflow[0].node) {
+						// eslint-disable-next-line no-console
+						console.log("📝 LAYOUT: Handling breaks for overflow node");
 						// Overflow.
 						await this.handleBreaks(breakToken.overflow[0].node);
 					}
 					else {
+						// eslint-disable-next-line no-console
+						console.log("📝 LAYOUT: Handling breaks for breakToken node");
 						await this.handleBreaks(breakToken.node);
 					}
 				} else {
+					// eslint-disable-next-line no-console
+					console.log("📝 LAYOUT: Handling breaks for first content child");
 					await this.handleBreaks(content.firstChild as HTMLElement);
 				}
 			}
 
 			const addedExtra = this.total != prevNumPages;
+			// eslint-disable-next-line no-console
+			console.log("📝 LAYOUT: After handleBreaks", { addedExtra, currentTotal: this.total });
 
 			// Don't add a page if we have a forced break now and we just
 			// did a break due to overflow but have nothing displayed on
 			// the current page, unless there's overflow and we're finished.
 			if (!page || addedExtra || !emptyPage) {
+				// eslint-disable-next-line no-console
+				console.log("📝 LAYOUT: Adding new page");
 				this.addPage();
+			} else {
+				// eslint-disable-next-line no-console
+				console.log("📝 LAYOUT: Not adding new page", { reason: "page exists and is empty without added extra pages" });
 			}
 
 			page = this.pages[this.total - 1];
+			// eslint-disable-next-line no-console
+			console.log("📝 LAYOUT: Current page", { pageIndex: this.total - 1, pageId: page.id });
 
 			await this.hooks.beforePageLayout.trigger(page, content, breakToken || undefined, this);
 			this.emit("page", page);
 
+			// eslint-disable-next-line no-console
+			console.log("📝 LAYOUT: Laying out content on page", { pageId: page.id });
 			// Layout content in the page, starting from the breakToken.
 			breakToken = await page.layout(content, breakToken || undefined, prevPage);
+			// eslint-disable-next-line no-console
+			console.log("📝 LAYOUT: Page layout complete", { 
+				pageId: page.id, 
+				hasBreakToken: !!breakToken,
+				breakTokenType: breakToken === false ? "false" : (breakToken ? "BreakToken" : "undefined")
+			});
 
 			await this.hooks.afterPageLayout.trigger(page.element, page, breakToken, this);
 			await this.hooks.finalizePage.trigger(page.element, page, undefined, this);
@@ -433,10 +601,21 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 			prevPage = page.wrapper;
 
 			this.recoredCharLength(page.wrapper.textContent.length);
-
+			
+			// eslint-disable-next-line no-console
+			console.log("📝 LAYOUT: Yielding breakToken", { 
+				hasBreakToken: !!breakToken,
+				breakTokenType: breakToken === false ? "false" : (breakToken ? "BreakToken" : "undefined"),
+				totalPages: this.total
+			});
 			yield breakToken;
 		}
 
+		// eslint-disable-next-line no-console
+		console.log("📝 LAYOUT: Layout generator complete", { 
+			reason: breakToken === undefined ? "breakToken is undefined" : (MAX_PAGES && this.total >= MAX_PAGES ? "reached MAX_PAGES" : "unknown"),
+			totalPages: this.total
+		});
 	}
 
 	private recoredCharLength(length: number) {
@@ -453,26 +632,47 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 	}
 
 	private removePages(fromIndex=0) {
+		// eslint-disable-next-line no-console
+		console.log("📝 REMOVE_PAGES: Starting removal", { 
+			fromIndex, 
+			totalPagesBefore: this.total, 
+			pagesLength: this.pages.length 
+		});
 
 		if (fromIndex >= this.pages.length) {
+			// eslint-disable-next-line no-console
+			console.log("📝 REMOVE_PAGES: fromIndex >= pages.length, nothing to remove");
 			return;
 		}
 
 		// Remove pages
+		// eslint-disable-next-line no-console
+		console.log("📝 REMOVE_PAGES: Removing pages from index", fromIndex);
 		for (let i = fromIndex; i < this.pages.length; i++) {
+			// eslint-disable-next-line no-console
+			console.log("📝 REMOVE_PAGES: Destroying page", { pageIndex: i, pageId: this.pages[i].id });
 			this.pages[i].destroy();
 		}
 
 		if (fromIndex > 0) {
+			// eslint-disable-next-line no-console
+			console.log("📝 REMOVE_PAGES: Splicing pages array from index", fromIndex);
 			this.pages.splice(fromIndex);
 		} else {
+			// eslint-disable-next-line no-console
+			console.log("📝 REMOVE_PAGES: Resetting pages array");
 			this.pages = [];
 		}
 
 		this.total = this.pages.length;
+		// eslint-disable-next-line no-console
+		console.log("📝 REMOVE_PAGES: Removal complete", { totalPagesAfter: this.total });
 	}
 
 	private addPage(blank?: boolean) {
+		// eslint-disable-next-line no-console
+		console.log("📝 ADD_PAGE: Adding new page", { totalPagesBefore: this.total, isBlank: !!blank });
+		
 		const lastPage = this.pages[this.pages.length - 1];
 		// Create a new page from the template
 		const page = new Page(this.pagesArea, this.pageTemplate, blank, this.hooks, this.settings);
@@ -483,18 +683,26 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 		page.create(undefined, lastPage && lastPage.element);
 
 		page.index(this.total);
+		
+		// eslint-disable-next-line no-console
+		console.log("📝 ADD_PAGE: Page created", { pageId: page.id, pageIndex: this.total - 1 });
 
 		if (!blank) {
 			// Listen for page overflow
 			page.onOverflow((overflowToken) => {
-				console.warn("overflow on", page.id, overflowToken);
+				// eslint-disable-next-line no-console
+				console.warn("📝 OVERFLOW: Page overflow detected", { pageId: page.id, hasOverflowToken: !!overflowToken });
 
 				// Only reflow while rendering
 				if (this.rendered) {
+					// eslint-disable-next-line no-console
+					console.log("📝 OVERFLOW: Already rendered, ignoring overflow");
 					return;
 				}
 
 				const index = this.pages.indexOf(page) + 1;
+				// eslint-disable-next-line no-console
+				console.log("📝 OVERFLOW: Stopping render to handle overflow", { pageIndex: index, totalPages: this.total });
 
 				// Stop the rendering
 				this.stop();
@@ -504,26 +712,27 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 
 				// Remove pages
 				this.removePages(index);
+				
+				// eslint-disable-next-line no-console
+				console.log("📝 OVERFLOW: Pages removed after overflow", { remainingPages: this.pages.length });
 
 				if (this.rendered) {
 					this.rendered = false;
+					// eslint-disable-next-line no-console
+					console.log("📝 OVERFLOW: Re-rendering after overflow");
 
 					this.q.enqueue(async () => {
-
 						this.start();
-
 						await this.render(this.source, this.breakToken);
-
 						this.rendered = true;
-
 					});
 				}
-
-
 			});
 		}
 
 		this.total = this.pages.length;
+		// eslint-disable-next-line no-console
+		console.log("📝 ADD_PAGE: Page added successfully", { totalPagesAfter: this.total });
 
 		return page;
 	}
