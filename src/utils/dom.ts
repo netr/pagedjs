@@ -827,8 +827,12 @@ export function indexOfTextNode(node: Node, parent: HTMLElement | DocumentFragme
 	// Use previous element's dataref to match if possible. Matching the text
 	// will potentially return the wrong node.
 	if (node.previousSibling) {
-		const matchingNode = parent.querySelector(`[data-ref='${(node.previousSibling as HTMLElement).dataset.ref}']`);
-		return Array.prototype.indexOf.call(parent.childNodes, matchingNode) + 1;
+		try {
+			const matchingNode = parent.querySelector(`[data-ref='${(node.previousSibling as HTMLElement).dataset.ref}']`);
+			return Array.prototype.indexOf.call(parent.childNodes, matchingNode) + 1;
+		} catch (e) {
+			console.error(e);
+		}
 	}
 
 	let nodeTextContent = node.textContent;
