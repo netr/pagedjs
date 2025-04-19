@@ -282,9 +282,13 @@ class Layout {
 	 *   A destination DOM node tree.
 	 * @param source
 	 *   A source DOM node tree.
+	 * @returns void
 	 */
 	private addOverflowNodes(dest: HTMLElement | DocumentFragment, source: DocumentFragment | Element) {
 		// Since we are modifying source as we go, we need to remember what
+		if (!source) {
+			return;
+		}
 		Array.from(source.childNodes).forEach((item) => {
 			if (isText(item)) {
 				// If we get to a text node, we assume for now an earlier element
@@ -310,6 +314,7 @@ class Layout {
 	 *   The current break cotent.
 	 * @param alreadyRendered
 	 *   The content that has already been rendered.
+	 * @returns void
 	 */
 	private addOverflowToPage(dest: LayoutHTMLElement, breakToken: BreakToken, alreadyRendered: HTMLElement) {
 		if (!breakToken || !breakToken.overflow.length) {
