@@ -132,11 +132,22 @@ class Previewer extends EventEmitter<PreviewerEventMap> {
 		return template.content;
 	}
 
-	private removeStyles(doc = document): (string | Record<string, string>)[] {
+	private removeStyles(doc = document, content = null): (string | Record<string, string>)[] {
 		// Get all stylesheets
 		const stylesheets = Array.from(doc.querySelectorAll("link[rel='stylesheet']:not([data-pagedjs-ignore], [media~='screen'])"));
 		// Get inline styles
 		const inlineStyles = Array.from(doc.querySelectorAll("style:not([data-pagedjs-inserted-styles], [data-pagedjs-ignore], [media~='screen'])"));
+
+		// Get all styles from the content (content of the template cant be queried by document.querySelector directly)
+		if(content){
+			// stylesheets
+			const contentStylesheets: Element[] = Array.from(content.querySelectorAll("link[rel='stylesheet']:not([data-pagedjs-ignore], [media~='screen'])"));
+			stylesheets.push(...contentStylesheets);
+			// Inline styles
+			const contentInlineStyles: Element[] = Array.from(content.querySelectorAll("style:not([data-pagedjs-inserted-styles], [data-pagedjs-ignore], [media~='screen'])"));
+			stylesheets.push(...contentInlineStyles);
+		}
+
 		const elements = [...stylesheets, ...inlineStyles];
 		return elements
 			// preserve order
@@ -175,7 +186,7 @@ class Previewer extends EventEmitter<PreviewerEventMap> {
 		}
 
 		if (!stylesheets) {
-			stylesheets = this.removeStyles();
+			stylesheets = this.removeStyles(document, content);
 		}
 
 		this.polisher.setup();

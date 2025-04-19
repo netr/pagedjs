@@ -64,17 +64,19 @@ class Polisher {
 					});
 					// TODO: fetched and urls must have the same cardinality, so this should happen here:
 					//
-					// fetched.push(f);
+					fetched.push(f);
 				}
 			} else {
 				urls.push(arg);
 				f = request(arg).then((response) => {
 					return response.text();
+				}).catch(() => {
+					console.warn(`Failed to request ${arg}`);
+					return "";
 				});
+				
+				fetched.push(f);
 			}
-
-
-			fetched.push(f);
 		}
 
 		return await Promise.all(fetched)
@@ -94,11 +96,15 @@ class Polisher {
 
 		// Insert the imported sheets first
 		for (const url of sheet.imported) {
-			const str = await request(url).then((response) => {
-				return response.text();
-			});
-			const text = await this.convertViaSheet(str, url);
-			this.insert(text);
+			try {
+				const str = await request(url).then((response) => {
+					return response.text();
+				});
+				const text = await this.convertViaSheet(str, url);
+				this.insert(text);
+			} catch (e: unknown) {
+				console.warn(`Failed to import ${url} - ${e}`);
+			}
 		}
 
 		this.sheets.push(sheet);

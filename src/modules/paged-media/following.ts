@@ -32,7 +32,11 @@ class Following extends Handler implements HooksInterface<Chunker["hooks"] & Pol
 				}
 			});
 
-			rulelist.remove(ruleItem);
+			try {
+				rulelist.remove(ruleItem);
+			} catch {
+				console.warn("Unable to remove rule (ignoring):", selector);
+			}
 		}
 	}
 
