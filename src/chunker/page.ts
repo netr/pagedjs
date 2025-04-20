@@ -137,7 +137,7 @@ class Page {
 
 		if (breakToken && newBreakToken && breakToken.equals(newBreakToken)) {
 			console.log(`[Page ${this.id}] Break token hasn't changed. Returning early.`);
-			// return; // Return undefined
+			return newBreakToken; // Return the unchanged token to signal no progress
 		}
 
 		this.addListeners(contents);

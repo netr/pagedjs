@@ -630,6 +630,7 @@ class Layout {
 
 			// Stop removal if we are in a loop
 			if (breakToken.equals(prevBreakToken)) {
+				console.log("[Layout] Break token hasn't changed. Returning early.");
 				return;
 			}
 
