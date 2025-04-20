@@ -173,6 +173,11 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 	private recordRulesToDisable() {
 		for (const i in document.styleSheets) {
 			const sheet = document.styleSheets[i];
+			// SecurityError: Failed to read the 'cssRules' property from 'CSSStyleSheet': Cannot access rules
+			if (sheet.href && sheet.href.indexOf(window.location.origin) === -1) {
+				continue;
+			}
+						
 			for (const j in sheet.cssRules) {
 				const rule = sheet.cssRules.item(parseInt(j));
 				if (rule && rule instanceof CSSStyleRule) {
