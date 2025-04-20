@@ -630,8 +630,10 @@ class Layout {
 
 			// Stop removal if we are in a loop
 			if (breakToken.equals(prevBreakToken)) {
-				console.log("[Layout] Break token hasn't changed. Returning early.");
-				return;
+				// Don't return immediately. Log the issue and let the process continue.
+				// This might allow higher-level logic to detect and handle the stall.
+				console.warn("[Layout] Break token hasn't changed. Potential infinite loop detected. Continuing process.", breakToken);
+				// return;
 			}
 
 			if (overflow?.node && overflow?.offset && overflow?.node?.textContent) {
