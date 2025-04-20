@@ -119,30 +119,41 @@ class Page {
 	}
 
 	public async layout(contents: HTMLElement | DocumentFragment, breakToken?: BreakToken, prevPage?: HTMLElement) {
+		console.log(`[Page ${this.id}] layout() called with breakToken:`, breakToken);
 
 		this.clear();
 
 		this.startToken = breakToken;
+		console.log(`[Page ${this.id}] startToken set:`, this.startToken);
 
 		this.layoutMethod = new Layout(this.area, this.hooks, this.settings);
+		console.log(`[Page ${this.id}] Layout method initialized.`);
 
+		console.log(`[Page ${this.id}] Calling layoutMethod.renderTo...`);
 		const renderResult = await this.layoutMethod.renderTo(this.wrapper, contents, breakToken, prevPage);
 		const newBreakToken = renderResult.breakToken;
+		console.log(`[Page ${this.id}] layoutMethod.renderTo returned newBreakToken:`, newBreakToken);
+
 
 		if (breakToken && newBreakToken && breakToken.equals(newBreakToken)) {
-			return;
+			console.log(`[Page ${this.id}] Break token hasn't changed. Returning early.`);
+			// return; // Return undefined
 		}
 
 		this.addListeners(contents);
+		console.log(`[Page ${this.id}] Listeners added.`);
 
 		this.endToken = newBreakToken;
+		console.log(`[Page ${this.id}] endToken set:`, this.endToken);
 
+		console.log(`[Page ${this.id}] layout() returning newBreakToken:`, newBreakToken);
 		return newBreakToken;
 	}
 
 	public async append(contents: HTMLElement, breakToken: BreakToken) {
-
 		if (!this.layoutMethod) {
+			// Consider adding a log here if this path is unexpected
+			console.log(`[Page ${this.id}] append() called but layoutMethod is missing, calling layout() instead.`);
 			return this.layout(contents, breakToken);
 		}
 

@@ -5,7 +5,6 @@ import ContentParser from "./parser";
 import { EventEmitter } from "../utils/event-emitter";
 import Hook from "../utils/hook";
 import Queue from "../utils/queue";
-import { debugLog } from "../utils/debug";
 
 const MAX_PAGES = null;
 const MAX_LAYOUTS = false;
@@ -137,11 +136,6 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 	private source?: HTMLElement | DocumentFragment;
 	private breakToken?: BreakToken;
 	private isDebugEnabled = true; // Set to true to enable debug logs
-
-	// Custom debug method to avoid ESLint console warnings
-	private debug(message: string, data?: any): void {
-		// eslint-disable-next-line no-console
-		if (this.isDebugEnabled) console.log(`🔍 DEBUG - ${message}`, data ? data : '');
 
 	public pages: Page[] = [];
 	public pagesArea: HTMLDivElement | undefined;
@@ -507,11 +501,22 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 	private async *layout(content: HTMLElement | DocumentFragment, startAt: BreakToken | undefined) {
 		// eslint-disable-next-line no-console
 		console.log("📝 LAYOUT: Starting layout generator", { hasStartAt: !!startAt, totalPages: this.total });
+
 		let breakToken: BreakToken | undefined | false = startAt ?? false;
 		let page: Page | undefined;
 		let prevPage: HTMLElement | undefined;
 
-		while (breakToken !== undefined && (MAX_PAGES ? this.total < MAX_PAGES : true)) {
+		// before entering while loop
+		// eslint-disable-next-line no-console
+		console.log("📝 LAYOUT: Enter while loop condition", {
+			canContinue: breakToken !== undefined && (MAX_PAGES ? this.total < MAX_PAGES : true),
+			breakToken,
+			breakTokenType: breakToken === false ? "false" : (breakToken ? "BreakToken" : "undefined"),
+			totalPages: this.total,
+			maxPages: MAX_PAGES
+		});
+
+		while ((breakToken !== undefined) && (MAX_PAGES ? this.total < MAX_PAGES : true)) {
 			// eslint-disable-next-line no-console
 			console.log("📝 LAYOUT: New layout iteration", { 
 				totalPages: this.total,
@@ -591,7 +596,7 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 			console.log("📝 LAYOUT: Page layout complete", { 
 				pageId: page.id, 
 				hasBreakToken: !!breakToken,
-				breakTokenType: breakToken === false ? "false" : (breakToken ? "BreakToken" : "undefined")
+				breakTokenType: (breakToken === undefined || !breakToken) ? "false" : (breakToken ? "BreakToken" : "undefined")
 			});
 
 			await this.hooks.afterPageLayout.trigger(page.element, page, breakToken, this);
@@ -605,11 +610,25 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 			// eslint-disable-next-line no-console
 			console.log("📝 LAYOUT: Yielding breakToken", { 
 				hasBreakToken: !!breakToken,
-				breakTokenType: breakToken === false ? "false" : (breakToken ? "BreakToken" : "undefined"),
+				breakTokenType: (breakToken === undefined || !breakToken) ? "false" : (breakToken ? "BreakToken" : "undefined"),
 				totalPages: this.total
 			});
 			yield breakToken;
+			console.log("📝 LAYOUT: After yield", { 
+				breakToken,
+				breakTokenType: breakToken !== undefined ? breakToken : (breakToken ? "BreakToken" : "undefined")
+			  });
 		}
+
+		// new: log exit of loop just before completion
+		// eslint-disable-next-line no-console
+		console.log("📝 LAYOUT: Exiting while loop", {
+			breakToken,
+			breakTokenType: breakToken === false ? "false" : (breakToken ? "BreakToken" : "undefined"),
+			totalPages: this.total,
+			maxPages: MAX_PAGES,
+			exitCondition: breakToken === undefined ? "breakToken undefined" : (MAX_PAGES && this.total >= MAX_PAGES ? "reached MAX_PAGES" : "unknown")
+		});
 
 		// eslint-disable-next-line no-console
 		console.log("📝 LAYOUT: Layout generator complete", { 
