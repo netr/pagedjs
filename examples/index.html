@@ -260,6 +260,10 @@ p { font-family: sans-serif; }
           // Clone the page with all its context
           const pageCopy = pageNodes[0].cloneNode(true);
           visibleContainer.appendChild(pageCopy);
+          updateButtons(); // Initial update for buttons and label
+        } else {
+           pageLabel.textContent = 'Page 0 of 0'; // Handle case with no pages
+           updateButtons(); // Ensure buttons are disabled if no pages
         }
       });
 
@@ -267,41 +271,73 @@ p { font-family: sans-serif; }
       let currentPage = 0;
       const controls = document.createElement('div');
       controls.style.display = 'flex';
+      controls.style.alignItems = 'center'; // Align items vertically
       controls.style.justifyContent = 'center';
       controls.style.margin = '20px';
+      controls.style.gap = '10px'; // Add some space between elements
+
+      const firstBtn = document.createElement('button');
+      firstBtn.textContent = 'First';
+      firstBtn.disabled = true;
+
       const prevBtn = document.createElement('button');
       prevBtn.textContent = 'Previous';
       prevBtn.disabled = true;
+
+      const pageLabel = document.createElement('span');
+      pageLabel.id = 'page-label';
+      pageLabel.textContent = 'Page - of -'; // Placeholder text
+
       const nextBtn = document.createElement('button');
       nextBtn.textContent = 'Next';
+      // Disable initially, enable when pages are loaded if more than one page exists
+      nextBtn.disabled = true; 
+
+      const lastBtn = document.createElement('button');
+      lastBtn.textContent = 'Last';
+      // Disable initially, enable when pages are loaded if more than one page exists
+      lastBtn.disabled = true; 
+
+      controls.appendChild(firstBtn);
       controls.appendChild(prevBtn);
+      controls.appendChild(pageLabel); // Add label between prev and next
       controls.appendChild(nextBtn);
+      controls.appendChild(lastBtn);
       document.body.insertBefore(controls, visibleContainer.nextSibling);
+
+      // Function to update the visible page
+      function showPage(pageIndex) {
+        currentPage = pageIndex;
+        visibleContainer.innerHTML = '';
+        if (pageNodes[currentPage]) {
+          const pageCopy = pageNodes[currentPage].cloneNode(true);
+          visibleContainer.appendChild(pageCopy);
+          updateContainerClass();
+        }
+        updateButtons(); // Update buttons and label after showing page
+      }
+
+      firstBtn.addEventListener('click', () => {
+        if (currentPage > 0) {
+          showPage(0);
+        }
+      });
 
       prevBtn.addEventListener('click', () => {
         if (currentPage > 0) {
-          currentPage--;
-          visibleContainer.innerHTML = '';
-          // Clone the page with all its context
-          const pageCopy = pageNodes[currentPage].cloneNode(true);
-
-          visibleContainer.appendChild(pageCopy);
-          // Set class on container to match pagedjs structure
-          updateContainerClass();
-          updateButtons();
+          showPage(currentPage - 1);
         }
       });
+
       nextBtn.addEventListener('click', () => {
         if (currentPage < pageNodes.length - 1) {
-          currentPage++;
-          visibleContainer.innerHTML = '';
-          // Clone the page with all its context
-          const pageCopy = pageNodes[currentPage].cloneNode(true);
-          
-          visibleContainer.appendChild(pageCopy);
-          // Set class on container to match pagedjs structure
-          updateContainerClass();
-          updateButtons();
+          showPage(currentPage + 1);
+        }
+      });
+
+      lastBtn.addEventListener('click', () => {
+        if (currentPage < pageNodes.length - 1) {
+          showPage(pageNodes.length - 1);
         }
       });
       
@@ -310,9 +346,14 @@ p { font-family: sans-serif; }
         // Make sure our container has the same class as the original
         visibleContainer.className = 'pagedjs_pages';
       }
+
       function updateButtons() {
+        const totalPages = pageNodes.length;
+        pageLabel.textContent = `Page ${currentPage + 1} of ${totalPages}`; // Update label text
+        firstBtn.disabled = currentPage === 0;
         prevBtn.disabled = currentPage === 0;
-        nextBtn.disabled = currentPage === pageNodes.length - 1;
+        nextBtn.disabled = currentPage === totalPages - 1 || totalPages === 0;
+        lastBtn.disabled = currentPage === totalPages - 1 || totalPages === 0;
       }
 
       let resizer = () => {
