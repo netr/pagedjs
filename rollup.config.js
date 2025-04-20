@@ -6,7 +6,7 @@ import typescript from "@rollup/plugin-typescript";
 import license from "rollup-plugin-license";
 
 import pkg from "./package.json" with {
-  type: 'json'
+  type: "json"
 };
 
 const plugins = [
@@ -67,7 +67,7 @@ export default [
 			format: "umd",
 			sourcemap: true,
 		},
-    plugins: [plugins, terser()]
+		plugins: [plugins, terser()]
 	},
 	{
 		input: "./src/polyfill/polyfill.ts",
