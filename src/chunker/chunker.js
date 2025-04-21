@@ -156,6 +156,10 @@ class Chunker {
 	recordRulesToDisable() {
 		for (var i in document.styleSheets) {
 			let sheet = document.styleSheets[i];
+			// SecurityError: Failed to read the 'cssRules' property from 'CSSStyleSheet': Cannot access rules
+ 			if (sheet.href && sheet.href.indexOf(window.location.origin) === -1) {
+ 				continue;
+ 			}
 			for (var j in sheet.cssRules) {
 				let rule = sheet.cssRules.item(j);
 				if (rule && rule.style) {
