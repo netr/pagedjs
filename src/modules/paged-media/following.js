@@ -27,7 +27,11 @@ class Following extends Handler {
 				}
 			});
 
-			rulelist.remove(ruleItem);
+			try {
+				rulelist.remove(ruleItem);
+			} catch {
+				console.warn("Unable to remove rule (ignoring):", selector);
+			}
 		}
 	}
 
