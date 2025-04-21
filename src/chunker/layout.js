@@ -265,6 +265,9 @@ class Layout {
 	 */
 	addOverflowNodes(dest, source) {
 		// Since we are modifying source as we go, we need to remember what
+		if (!source) {
+			return;
+		}
 		Array.from(source.childNodes).forEach((item) => {
 			if (isText(item)) {
 				// If we get to a text node, we assume for now an earlier element
