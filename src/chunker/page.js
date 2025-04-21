@@ -131,7 +131,7 @@ class Page {
 		let newBreakToken = renderResult.breakToken;
 
 		if (breakToken && newBreakToken && breakToken.equals(newBreakToken)) {
-			return;
+			console.warn("[Page] Break token hasn't changed. Only text overflows found. Continuing process...", breakToken);
 		}
 
 		this.addListeners(contents);
