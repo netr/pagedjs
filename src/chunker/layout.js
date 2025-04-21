@@ -617,7 +617,6 @@ class Layout {
 				} else {
 					console.warn("[Layout] Break token hasn't changed. Only text overflows found. Continuing process...", breakToken);
 				}
-				return;
 			}
 
 			if (overflow?.node && overflow?.offset && overflow?.node?.textContent) {
