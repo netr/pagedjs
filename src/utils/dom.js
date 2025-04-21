@@ -165,7 +165,7 @@ function copyWidth(originalElement, destElement) {
 	let bounds = getBoundingClientRect(originalElement);
 	let width = parseInt(originalStyle.width || bounds.width);
 	if (width) {
-		destElement.style.width = width + 'px';
+		destElement.style.width = width + "px";
 	}
 }
 
@@ -336,7 +336,7 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 			}
 		}
 
-		if (subject.previousElementSibling?.nodeName == 'THEAD') {
+		if (subject.previousElementSibling?.nodeName == "THEAD") {
 			// Clone the THEAD too.
 			let sibling = subject.previousElementSibling;
 
@@ -364,14 +364,14 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 								// Next step is to change the "true" below to use a custom
 								// attribute that lets you control whether the header is shown.
 								if (true) {
-									pos.style.visibility = 'collapse';
-									pos.style.marginTop = '0px';
-									pos.style.marginBottom = '0px';
-									pos.style.paddingTop = '0px';
-									pos.style.paddingBottom = '0px';
-									pos.style.borderTop = '0px';
-									pos.style.borderBottom = '0px';
-									pos.style.lineHeight = '0px';
+									pos.style.visibility = "collapse";
+									pos.style.marginTop = "0px";
+									pos.style.marginBottom = "0px";
+									pos.style.paddingTop = "0px";
+									pos.style.paddingBottom = "0px";
+									pos.style.borderTop = "0px";
+									pos.style.borderBottom = "0px";
+									pos.style.lineHeight = "0px";
 									pos.style.opacity = 0;
 								}
 							}
@@ -393,7 +393,7 @@ export function rebuildTree (node, fragment, alreadyRendered) {
 		}
 
 		dupSiblings = (subject.dataset.clonesiblings == true ||
-			['grid', 'flex', 'table-row'].indexOf(subject.style.display) > -1);
+			["grid", "flex", "table-row"].indexOf(subject.style.display) > -1);
 		added.push(parent);
 
 		if (subject.tagName == "LI") {
@@ -888,8 +888,12 @@ export function indexOfTextNode(node, parent, hyphen) {
 	// Use previous element's dataref to match if possible. Matching the text
 	// will potentially return the wrong node.
 	if (node.previousSibling) {
-		let matchingNode = parent.querySelector(`[data-ref='${node.previousSibling.dataset.ref}']`);
-		return Array.prototype.indexOf.call(parent.childNodes, matchingNode) + 1;
+		try {
+			const matchingNode = parent.querySelector(`[data-ref='${node.previousSibling.dataset.ref}']`);
+			return Array.prototype.indexOf.call(parent.childNodes, matchingNode) + 1;
+		} catch (e) {
+			console.error(e);
+		}
 	}
 
 	let nodeTextContent = node.textContent;
