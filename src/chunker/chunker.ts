@@ -355,39 +355,26 @@ class Chunker extends EventEmitter<ChunkerEventMap> {
 		}
 
 		let page: Page | undefined;
-		let breakReason = "none";
 		
 		if (force) {
-			breakReason = "force=true";
 			page = this.addPage(true);
 		} else if( previousBreakAfter &&
 				(previousBreakAfter === "left" || previousBreakAfter === "right") &&
 				previousBreakAfter !== currentPosition) {
-			breakReason = "previousBreakAfter position mismatch";
 			page = this.addPage(true);
 		} else if( previousBreakAfter &&
 				(previousBreakAfter === "verso" || previousBreakAfter === "recto") &&
 				previousBreakAfter !== currentSide) {
-			breakReason = "previousBreakAfter side mismatch";
 			page = this.addPage(true);
 		} else if( breakBefore &&
 				(breakBefore === "left" || breakBefore === "right") &&
 				breakBefore !== currentPosition) {
-			breakReason = "breakBefore position mismatch";
 			page = this.addPage(true);
 		} else if( breakBefore &&
 				(breakBefore === "verso" || breakBefore === "recto") &&
 				breakBefore !== currentSide) {
-			breakReason = "breakBefore side mismatch";
 			page = this.addPage(true);
 		}
-
-		// eslint-disable-next-line no-console
-		console.log("📝 HANDLE_BREAKS: Break decision", { 
-			addPage: !!page, 
-			breakReason,
-			totalPages: this.total
-		});
 
 		if (page) {
 			await this.hooks.beforePageLayout.trigger(page, undefined, undefined, this);
